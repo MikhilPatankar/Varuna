@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ZARR_ROOT=/app/data/zarr
+      - DUCKDB_PATH=/app/data/polaris.duckdb
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 14G
+
+  scheduler:
+    build: .
+    command: ["python", "scripts/scheduler.py"]
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ZARR_ROOT=/app/data/zarr
+      - DUCKDB_PATH=/app/data/polaris.duckdb
+    restart: unless-stopped

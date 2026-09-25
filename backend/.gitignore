@@ -1,0 +1,36 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Data & Heavy Data Files
+# Completely ignores the raw GEBCO data, TIFF conversions, and Zarr chunks
+data/
+*.nc
+*.tif
+*.tiff
+*.zarr
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp

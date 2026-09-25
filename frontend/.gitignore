@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production / Builds
+dist/
+build/
+dist-ssr/
+
+# Heavy Assets / Rendered Previews
+# If you decide the 2MB WebP is too heavy for git, uncomment the lines below:
+# public/bathymetry.webp
+# public/bathymetry_meta.json
+
+# Local Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vite / React logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp

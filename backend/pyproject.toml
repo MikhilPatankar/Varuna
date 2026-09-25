@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "polaris"
+version = "0.1.0"
+description = "Backend for POLARIS 3D Ocean Data Visualization Platform"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    # Core Data
+    "xarray>=2024.1.0",
+    "netCDF4>=1.6.0",
+    "h5netcdf>=1.3.0",
+    "h5py>=3.10.0",
+    "zarr>=2.16.0",
+    "dask[complete]>=2024.1.0",
+    "pandas>=2.1.0",
+    "numpy>=1.26.0,<2.0.0",
+    
+    # Spatial & Formats
+    "fiona>=1.9.0",
+    "geopandas>=0.14.0",
+    "pyproj>=3.6.0",
+    "ndpyramid>=0.1.0",
+    "rechunker>=0.5.0",
+    
+    # Database
+    "duckdb>=1.0.0",
+    
+    # API
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.0",
+    
+    # Instrument & Data Sources
+    "argopy>=0.1.15",
+    "copernicusmarine>=1.1.0",
+    
+    # Scheduling
+    "apscheduler>=3.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "httpx>=0.25.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["polaris"]

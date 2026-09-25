@@ -1,0 +1,27 @@
+/* Global reset and typography */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: 'Inter', 'Outfit', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Cesium widget overrides */
+.cesium-widget canvas {
+  outline: none;
+}
+
+.cesium-credit-logoContainer,
+.cesium-credit-textContainer {
+  display: none !important;
+}
