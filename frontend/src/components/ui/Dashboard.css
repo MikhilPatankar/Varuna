@@ -1,0 +1,652 @@
+/* 
+  Dashboard.css 
+  Light theme, Glassmorphic, Premium look.
+  Palette: #55c3ff, #064274, #80ccfe, white
+*/
+
+.dashboard-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* Let clicks pass through to the globe */
+  display: flex;
+  font-family: 'Inter', sans-serif;
+  color: #064274;
+  z-index: 10;
+}
+
+/* Reset buttons */
+button {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+/* Glass panel mixin */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(6, 66, 116, 0.1);
+  box-shadow: 0 4px 16px rgba(6, 66, 116, 0.08);
+  pointer-events: auto; /* Catch clicks */
+}
+
+/* ─── TOP LEFT PANEL ─── */
+.top-left-panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  pointer-events: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #55C3FF;
+  box-shadow: 0 0 12px #55C3FF, 0 0 24px rgba(85, 195, 255, 0.5);
+}
+
+.brand-text {
+  font-family: 'Outfit', sans-serif;
+  font-size: 18px; /* Increased to match system header visual height */
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: white; /* Changed to white */
+}
+
+.toolbar {
+  display: flex;
+  background: rgba(248, 250, 252, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(6, 66, 116, 0.08);
+  border-radius: 6px;
+  /* Decreased height (2px padding), increased width (8px padding + 6px gap) */
+  padding: 2px 8px;
+  gap: 6px; 
+  box-shadow: 0 4px 12px rgba(6, 66, 116, 0.05);
+}
+
+.tool-btn {
+  position: relative; /* Required for absolute tooltip positioning */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  color: #064274;
+  transition: all 0.2s;
+}
+
+/* Tooltip implementation matching the dark theme reference */
+.tool-btn::after, .profile-btn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px); /* Positioned below the button */
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  background: rgba(80, 80, 80, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 9999; /* Ensure tooltip is always the topmost element */
+}
+
+.tool-btn:hover::after, .profile-btn:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+.tool-btn:hover {
+  background: rgba(85, 195, 255, 0.15);
+  color: #55c3ff;
+}
+
+.tool-btn.active {
+  background: #55c3ff;
+  color: white;
+}
+
+.badge {
+  background: rgba(85, 195, 255, 0.15);
+  border: 1px solid rgba(85, 195, 255, 0.4);
+  color: white; /* Changed from #064274 to white */
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+/* ─── TOP CENTER PANEL ─── */
+.top-center-panel {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+/* ─── TOP RIGHT PANEL ─── */
+.top-right-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  pointer-events: auto;
+}
+
+/* Profile Button */
+.profile-btn {
+  position: relative; /* Required for absolute tooltip positioning */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: rgba(248, 250, 252, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(6, 66, 116, 0.08);
+  border-radius: 8px;
+  color: #064274;
+  box-shadow: 0 4px 12px rgba(6, 66, 116, 0.05);
+  transition: all 0.2s;
+  cursor: pointer;
+  z-index: 300; /* Ensure button and its tooltip render above the dropdown */
+}
+
+.profile-btn:hover, .profile-btn.active {
+  background: white;
+  color: #55c3ff;
+  box-shadow: 0 6px 16px rgba(85, 195, 255, 0.15);
+}
+
+/* Account Dropdown */
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 6px); /* Reduced gap */
+  right: 0; /* Align perfectly to the right edge */
+  width: 240px; /* Slightly wider for a premium feel */
+  background: rgba(248, 250, 252, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(6, 66, 116, 0.08);
+  border-radius: 16px; /* Extra rounded corners */
+  box-shadow: 0 16px 48px rgba(6, 66, 116, 0.12); /* Larger, softer premium shadow */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 200;
+}
+
+.account-header {
+  padding: 16px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #064274;
+  border-bottom: 1px solid rgba(6, 66, 116, 0.06);
+  text-align: center; /* Center the text! */
+}
+
+.account-body {
+  padding: 16px;
+}
+
+.login-btn {
+  width: 100%;
+  padding: 12px;
+  background: white; /* Clean white button */
+  border: 1px solid rgba(6, 66, 116, 0.06);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #064274;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(6, 66, 116, 0.03);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-btn:hover {
+  color: #55c3ff;
+  border-color: rgba(85, 195, 255, 0.3);
+  box-shadow: 0 6px 16px rgba(85, 195, 255, 0.15);
+}
+
+/* Map Dropdown */
+.map-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; /* Align left edge of dropdown with left edge of button to expand rightward */
+  width: 240px;
+  background: rgba(248, 250, 252, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(6, 66, 116, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(6, 66, 116, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 200;
+  padding: 8px 0;
+}
+
+.map-category {
+  padding: 8px 16px 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: rgba(6, 66, 116, 0.4); /* Clean subtle gray/blue to match theme */
+  text-transform: uppercase;
+}
+
+.map-option {
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: #064274;
+  text-align: left;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.map-option:hover {
+  background: rgba(6, 66, 116, 0.04);
+}
+
+.map-option.active {
+  background: #55c3ff; /* Polaris blue for active item */
+  color: white;
+}
+
+
+/* ─── LEFT SECTION (Sidebar + Inner Panel) ─── */
+.left-section {
+  position: absolute;
+  /* PERFECT VERTICAL CENTERING */
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  
+  height: fit-content;
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: row-reverse; /* Reverses DOM order: puts SidebarTabs on the left, InnerPanel on the right */
+  align-items: center; /* This prevents the sidebar from stretching to match the inner panel's height! */
+  gap: 32px; /* INCREASED GAP: Gives the toggle button plenty of room! */
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none; /* Let pointer pass through empty space */
+}
+
+/* When collapsed, push the left section off-screen, but leave the toggle button visible on the edge! */
+.left-section.collapsed {
+  transform: translate(calc(-100% - 12px), -50%); 
+}
+
+/* Floating Toggle Button */
+.side-toggle-btn {
+  position: absolute;
+  /* Exactly flush with the right edge, ZERO overlap */
+  right: -24px;
+  left: auto;
+  width: 24px; 
+  z-index: 10;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 48px;
+  background: rgba(248, 250, 252, 0.95);
+  /* Intentionally omitted backdrop-filter to prevent bloom at the 1px overlap */
+  border: 1px solid rgba(6, 66, 116, 0.08);
+  border-left: none; /* Smooth attachment */
+  border-radius: 0 8px 8px 0; /* Rounded on the right side */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #064274;
+  pointer-events: auto;
+  box-shadow: 4px 0 12px rgba(6, 66, 116, 0.05); /* Shadow to the right */
+  transition: all 0.2s;
+}
+
+.side-toggle-btn:hover {
+  background: white;
+  color: #55c3ff;
+  box-shadow: 4px 0 16px rgba(85, 195, 255, 0.15); /* Hover shadow to the right */
+}
+
+/* Sidebar */
+.sidebar-tabs {
+  position: relative; /* Anchor for the toggle button */
+  background: rgba(248, 250, 252, 0.95);
+  backdrop-filter: blur(8px);
+  /* Remove right border completely so the toggle tab can sit flush without a line */
+  border-top: 1px solid rgba(6, 66, 116, 0.08);
+  border-left: 1px solid rgba(6, 66, 116, 0.08);
+  border-bottom: 1px solid rgba(6, 66, 116, 0.08);
+  border-right: none;
+  border-radius: 12px;
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  box-shadow: 0 8px 32px rgba(6, 66, 116, 0.05);
+  pointer-events: auto;
+  gap: 8px; 
+}
+
+.sidebar-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 52px;
+  border-radius: 10px;
+  /* Clean white background to stand out from the off-white panel */
+  background: white; 
+  border: 1px solid rgba(6, 66, 116, 0.04);
+  box-shadow: 0 2px 4px rgba(6, 66, 116, 0.02);
+  color: #064274;
+  transition: all 0.2s;
+}
+
+.sidebar-btn:hover {
+  background: white;
+  color: #55c3ff;
+  border-color: rgba(85, 195, 255, 0.3);
+  box-shadow: 0 6px 16px rgba(85, 195, 255, 0.15);
+}
+
+.sidebar-btn.active {
+  background: #55c3ff;
+  color: white;
+  opacity: 1;
+  box-shadow: 0 4px 12px rgba(85, 195, 255, 0.3);
+}
+
+.sidebar-label {
+  font-size: 9px;
+  margin-top: 4px;
+  font-weight: 700;
+}
+
+.sidebar-toggle {
+  margin-top: auto;
+  width: 40px;
+  height: 24px;
+  border-radius: 4px;
+  background: rgba(6, 66, 116, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #064274;
+  transition: all 0.2s;
+}
+.sidebar-toggle:hover {
+  background: rgba(6, 66, 116, 0.1);
+}
+
+/* Inner Panel */
+.inner-panel {
+  background: rgba(248, 250, 252, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(6, 66, 116, 0.08);
+  border-radius: 12px;
+  width: 320px;
+  height: fit-content;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 32px rgba(6, 66, 116, 0.12);
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px;
+  border-bottom: 1px solid rgba(6, 66, 116, 0.08);
+}
+
+.panel-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 4px 0;
+  color: #064274;
+}
+
+.panel-subtitle {
+  font-size: 11px;
+  color: rgba(6, 66, 116, 0.6);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.close-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 66, 116, 0.05);
+  color: #064274;
+  transition: all 0.2s;
+}
+.close-btn:hover {
+  background: rgba(6, 66, 116, 0.15);
+}
+
+.panel-tabs {
+  display: flex;
+  padding: 0 16px;
+  gap: 4px;
+  margin-top: 12px;
+}
+.primary-tabs {
+  background: rgba(6, 66, 116, 0.04);
+  padding: 4px;
+  margin: 12px 16px 0 16px;
+  border-radius: 6px;
+}
+.primary-tabs .tab {
+  flex: 1;
+  text-align: center;
+  padding: 6px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(6, 66, 116, 0.6);
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+.primary-tabs .tab.active {
+  background: #55c3ff;
+  color: white;
+  box-shadow: 0 2px 8px rgba(85, 195, 255, 0.25);
+}
+
+.secondary-tabs .tab {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(6, 66, 116, 0.6);
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+.secondary-tabs .tab.active {
+  background: rgba(6, 66, 116, 0.08);
+  color: #064274;
+}
+
+/* Search bar row */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(6, 66, 116, 0.08);
+}
+.search-input-wrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-icon {
+  position: absolute;
+  left: 10px;
+  color: rgba(6, 66, 116, 0.4);
+}
+.search-input-wrapper input {
+  width: 100%;
+  background: rgba(6, 66, 116, 0.04);
+  border: 1px solid rgba(6, 66, 116, 0.1);
+  border-radius: 6px;
+  padding: 8px 12px 8px 32px;
+  font-size: 12px;
+  color: #064274;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-input-wrapper input:focus {
+  border-color: #55c3ff;
+}
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 66, 116, 0.04);
+  color: #064274;
+  border: 1px solid rgba(6, 66, 116, 0.1);
+  transition: all 0.2s;
+}
+.icon-btn:hover {
+  background: rgba(85, 195, 255, 0.1);
+  border-color: #80ccfe;
+  color: #55c3ff;
+}
+
+/* Select All */
+.select-all {
+  padding: 12px 16px 4px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: rgba(6, 66, 116, 0.6);
+}
+
+/* Item List */
+.items-list {
+  padding: 8px 16px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.item-card {
+  background: white;
+  border: 1px solid rgba(6, 66, 116, 0.12);
+  border-radius: 8px;
+  padding: 12px;
+  position: relative;
+  transition: all 0.2s;
+}
+.item-card:hover {
+  border-color: #80ccfe;
+  box-shadow: 0 4px 12px rgba(85, 195, 255, 0.15);
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.item-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.item-icon {
+  color: #55c3ff;
+}
+.item-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: #064274;
+}
+.item-badge {
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(6, 66, 116, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: rgba(6, 66, 116, 0.8);
+}
+.item-desc {
+  font-size: 11px;
+  color: rgba(6, 66, 116, 0.7);
+  margin-bottom: 8px;
+  padding-left: 26px; /* Align with text */
+}
+
+/* Restored styles for item metadata and buttons */
+.item-meta {
+  font-size: 10px;
+  color: rgba(6, 66, 116, 0.4);
+  padding-left: 26px;
+}
+
+.item-action-btn {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 66, 116, 0.04);
+  color: #064274;
+  transition: all 0.2s;
+}
+
+.item-action-btn:hover {
+  background: #55c3ff;
+  color: white;
+}

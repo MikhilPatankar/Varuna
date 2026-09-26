@@ -1,6 +1,12 @@
 import GlobeView from './components/GlobeView'
+import Dashboard from './components/ui/Dashboard'
 import './styles/global.css'
 
 export default function App() {
-  return <GlobeView />
+  return (
+    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      <GlobeView />
+      <Dashboard />
+    </div>
+  )
 }
