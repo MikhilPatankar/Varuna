@@ -629,7 +629,14 @@ export default function GlobeView() {
         <div className="hud-bottom-bar">
           <div className="hud-footer-left">
             <span className="hud-brand">Polaris</span>
-            <span className="hud-attribution" data-tooltip="Sources: CMEMS, Argo GDAC, IBTrACS, NOAA">Data attribution</span>
+            <span 
+              className="hud-attribution" 
+              data-tooltip="Sources: CMEMS, Argo GDAC, IBTrACS, NOAA"
+              style={{ cursor: 'pointer' }}
+              onClick={() => window.dispatchEvent(new CustomEvent('open-data-sources'))}
+            >
+              Data attribution
+            </span>
           </div>
           <div className="hud-footer-content">
             <div className="hud-scale-wrapper">
