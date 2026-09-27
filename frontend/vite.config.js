@@ -1,11 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import cesium from 'vite-plugin-cesium'
+import viteCompression from 'vite-plugin-compression'
 
 export default defineConfig({
   plugins: [
     react(),
     cesium(),
+    viteCompression({ algorithm: 'gzip', ext: '.gz' }),
+    viteCompression({ algorithm: 'brotliCompress', ext: '.br' }),
   ],
   server: {
     port: 5173,

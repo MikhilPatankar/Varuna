@@ -7,25 +7,82 @@ import {
   Math as CesiumMath,
   Rectangle,
   SingleTileImageryProvider,
+  ImageryLayer,
   CesiumTerrainProvider,
   CameraEventType,
   KeyboardEventModifier,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   EasingFunction,
+  EllipsoidTerrainProvider,
 } from 'cesium'
 import { Navigation, Plus, Minus, X } from 'lucide-react'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
+import { OceanTileProvider } from '../utils/OceanTileProvider'
+import VolumetricOcean from './VolumetricOcean'
 import './GlobeView.css'
-
-
 
 // ─── Main Globe Component ─────────────────────────────────────────────────────
 export default function GlobeView() {
   const containerRef = useRef(null)
   const viewerRef    = useRef(null)
+
   const [isCompassMenuOpen, setIsCompassMenuOpen] = useState(false)
   const compassMenuRef = useRef(null)
+  const [volumeConfig, setVolumeConfig] = useState(null)
+  const [viewerReady, setViewerReady] = useState(false)
+  const pendingVolumeConfig = useRef(null) // queued if viewer not ready yet
+
+  // ── GLOBAL API: exposed to Dashboard.jsx via window ─────────────────────────
+  // Defined during render so it always exists — but stores config via state so
+  // VolumetricOcean re-renders correctly once the async viewer is ready.
+  if (typeof window !== 'undefined') {
+    window.activeOceanLayer = null;
+    window.setOceanVariable = (varName, isActive, options = {}) => {
+      console.log(`[VOL-API] setOceanVariable varName=${varName} isActive=${isActive}`);
+
+      if (!isActive) {
+        pendingVolumeConfig.current = null;
+        setVolumeConfig(null);
+        if (viewerRef.current) viewerRef.current.scene.requestRender();
+        return;
+      }
+
+      const timeKey = '2026-09-21';
+      const variableMap = {
+        'Temperature': 'temperature', 'Sea Surface Temperature': 'temperature',
+        'Salinity': 'salinity', 'Currents': 'currents', 'Chlorophyll': 'chlorophyll',
+        'Oxygen': 'oxygen', 'Nitrate': 'nitrate', 'Phosphate': 'phosphate', 'Silicate': 'silicate'
+      };
+      const variable = variableMap[varName] || 'temperature';
+
+      const savedDepthStr = localStorage.getItem('polaris_oceanDepth');
+      const oceanDepth = savedDepthStr ? parseInt(JSON.parse(savedDepthStr)) : 0;
+      const savedExaggStr = localStorage.getItem('polaris_vertExagg');
+      const vertExagg = savedExaggStr ? parseInt(JSON.parse(savedExaggStr)) : 80;
+
+      const config = { 
+        variable, 
+        timeKey, 
+        opacity: options.opacity !== undefined ? options.opacity : 100, 
+        oceanDepth: options.oceanDepth !== undefined ? options.oceanDepth : oceanDepth,
+        oceanDensity: options.oceanDensity !== undefined ? options.oceanDensity : 25,
+        colormapSettings: options.colormapSettings || null,
+        vertExagg 
+      };
+
+      if (!viewerRef.current) {
+        // Viewer still initialising — queue the config; a useEffect will apply it
+        console.log('[VOL-API] Viewer not ready yet — queuing config:', config);
+        pendingVolumeConfig.current = config;
+        return;
+      }
+
+      pendingVolumeConfig.current = null;
+      setVolumeConfig(config);
+      viewerRef.current.scene.requestRender();
+    };
+  }
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -38,6 +95,14 @@ export default function GlobeView() {
     }
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [isCompassMenuOpen])
+
+  // Flush any config that was queued before the viewer finished initialising
+  useEffect(() => {
+    if (!viewerReady || !pendingVolumeConfig.current) return;
+    console.log('[VOL-API] Viewer now ready — flushing pending config:', pendingVolumeConfig.current);
+    setVolumeConfig(pendingVolumeConfig.current);
+    pendingVolumeConfig.current = null;
+  }, [viewerReady])
 
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) return
@@ -52,6 +117,7 @@ export default function GlobeView() {
       let terrainProvider
       try {
         terrainProvider = await CesiumTerrainProvider.fromIonAssetId(5936056)
+        window.bathyTerrainProvider = terrainProvider;
       } catch (err) {
         console.warn('[POLARIS] Failed to load Cesium Ion terrain:', err.message)
       }
@@ -70,7 +136,8 @@ export default function GlobeView() {
         fullscreenButton:        false,
         infoBox:                 false,
         selectionIndicator:      false,
-        requestRenderMode:       false,
+        requestRenderMode:       true,
+        maximumRenderTimeChange: Infinity,
         msaaSamples:             4,
         creditContainer:         document.createElement('div'),
         // Removed skyBox: false so Cesium loads its default starry cosmic background
@@ -79,12 +146,12 @@ export default function GlobeView() {
       })
 
       viewerRef.current = viewer
+      setViewerReady(true) // triggers re-render + pending config flush
       window.cesiumViewer = viewer // Expose globally for the Dashboard UI
       const { scene, camera } = viewer
       const globe = scene.globe
 
       // 1. VERTICAL EXAGGERATION
-      // 100x exaggeration makes the oceanic trenches extremely deep and visible from space.
       scene.verticalExaggeration = 80.0
       scene.verticalExaggerationRelativeHeight = 0.0
 
@@ -175,22 +242,7 @@ export default function GlobeView() {
         }
       }
 
-      // 🛠 DEBUG TOOL FOR USER: Print exact camera coordinates to console when they stop moving!
       camera.moveEnd.addEventListener(() => {
-        if (!viewerRef.current) return
-        const currentCamera = viewerRef.current.camera
-        const globe = viewerRef.current.scene.globe
-        const cartographic = globe.ellipsoid.cartesianToCartographic(currentCamera.position)
-        
-        const lon = CesiumMath.toDegrees(cartographic.longitude).toFixed(4)
-        const lat = CesiumMath.toDegrees(cartographic.latitude).toFixed(4)
-        const alt = Math.round(cartographic.height)
-        const pitch = CesiumMath.toDegrees(currentCamera.pitch).toFixed(2)
-        
-        console.log(`%c[CAMERA READY FOR COPY]`, 'color: #55c3ff; font-weight: bold;')
-        console.log(`destination: Cartesian3.fromDegrees(${lon}, ${lat}, ${alt}),`)
-        console.log(`pitch: CesiumMath.toRadians(${pitch})`)
-        
         updateHUD()
       })
 
@@ -358,8 +410,68 @@ export default function GlobeView() {
         viewer.imageryLayers.removeAll()
         const layer = viewer.imageryLayers.addImageryProvider(bathyProvider)
         layer.alpha = 1.0
+        layer.show = false // Hide by default until Dashboard.jsx syncs the user's settings!
+        window.bathyLayer = layer;
       } catch (e) {
         console.error('[POLARIS] Failed to load static bathymetry WebP:', e)
+      }
+
+      // Expose API for UI
+      // ── OCEAN VARIABLES ──────────────────────────────────────────────
+      // (API is now hoisted to the top of the component for guaranteed availability)
+      // ─────────────────────────────────────────────────────────────────
+
+      window.updateOceanOpacity = (opacityVal) => {
+        setVolumeConfig(prev => prev ? { ...prev, opacity: opacityVal } : null);
+        if (viewerRef.current) viewerRef.current.scene.requestRender();
+      }
+      
+      window.updateOceanDepth = (depthVal) => {
+        setVolumeConfig(prev => prev ? { ...prev, oceanDepth: depthVal } : null);
+        if (viewerRef.current) viewerRef.current.scene.requestRender();
+      }
+
+      window.updateOceanDensity = (densityVal) => {
+        setVolumeConfig(prev => prev ? { ...prev, oceanDensity: densityVal } : null);
+        if (viewerRef.current) viewerRef.current.scene.requestRender();
+      }
+
+      window.updateOceanColormap = (settings) => {
+        setVolumeConfig(prev => prev ? { ...prev, colormapSettings: settings } : null);
+        if (viewerRef.current) viewerRef.current.scene.requestRender();
+      }
+
+      window.setBathyEnabled = (isEnabled, currentExagg = 80.0) => {
+        if (window.bathyLayer && viewerRef.current) {
+          window.bathyLayer.show = isEnabled;
+          
+          if (window.bathyTerrainProvider) {
+            viewerRef.current.terrainProvider = isEnabled ? window.bathyTerrainProvider : new EllipsoidTerrainProvider();
+          }
+          
+          // Restore user's exaggeration when enabled (since we no longer use it as a hack to flatten)
+          viewerRef.current.scene.verticalExaggeration = isEnabled ? currentExagg : 1.0;
+          
+          // Request a single render frame to kickoff the QuadTree update
+          viewerRef.current.scene.requestRender();
+        }
+      }
+
+      window.setBathyOpacity = (opacityVal) => {
+        if (window.bathyLayer && viewerRef.current) {
+          window.bathyLayer.brightness = opacityVal / 100;
+          window.bathyLayer.alpha = 1.0;
+          viewerRef.current.scene.requestRender();
+        }
+      }
+      
+      window.setGlobeExaggeration = (exaggVal) => {
+        if (viewerRef.current) {
+          viewerRef.current.scene.verticalExaggeration = exaggVal;
+          // Sync with volume config so the raymarcher updates instantly
+          setVolumeConfig(prev => prev ? { ...prev, vertExagg: exaggVal } : null);
+          viewerRef.current.scene.requestRender();
+        }
       }
 
       // 5. BASE MAP (Loaded SECOND to yield bandwidth to the ocean)
@@ -430,11 +542,21 @@ export default function GlobeView() {
       window.toggleSunlight = async (enable) => {
         if (!viewerRef.current) return
         const scene = viewerRef.current.scene
-        const { ShadowMode } = await import('cesium')
+        const { ShadowMode, JulianDate, ClockStep } = await import('cesium')
         
         scene.globe.enableLighting = enable
         viewerRef.current.shadows = enable
-        viewerRef.current.terrainShadows = enable ? ShadowMode.ENABLED : ShadowMode.DISABLED
+        // Terrain shadows disabled due to square artifacting at high exaggeration
+        viewerRef.current.terrainShadows = ShadowMode.DISABLED
+
+        if (enable) {
+          viewerRef.current.clock.clockStep = ClockStep.SYSTEM_CLOCK
+          viewerRef.current.clock.currentTime = JulianDate.now()
+          viewerRef.current.clock.shouldAnimate = true
+          viewerRef.current.clock.multiplier = 1.0
+        } else {
+          viewerRef.current.clock.shouldAnimate = false
+        }
         
         // Also toggle the skyAtmosphere on so we get realistic sunrise/sunset scatter effects!
         if (enable && !scene.skyAtmosphere) {
@@ -650,6 +772,12 @@ export default function GlobeView() {
           </div>
         </div>
       </div>
+      {volumeConfig && viewerReady && (
+        <VolumetricOcean
+          viewer={viewerRef.current}
+          {...volumeConfig}
+        />
+      )}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Cartesian3, Math as CesiumMath } from 'cesium'
 import { 
   Camera, Settings, Info, FileText, Database,
@@ -77,6 +77,38 @@ export default function Dashboard() {
     return () => window.removeEventListener('open-data-sources', handleOpenDataSources);
   }, []);
 
+  const [viewerReady, setViewerReady] = useState(false);
+
+  // Sync Cesium viewer with persisted UI toggles on initial mount
+  useEffect(() => {
+    let attempts = 0;
+    const syncInterval = setInterval(() => {
+      attempts++;
+      if (window.cesiumViewer && window.toggleSunlight && window.toggleStars && window.changeMapLayer && window.toggleAutoRotate && window.setOceanVariable) {
+        window.toggleSunlight(isSunlightOn);
+        window.toggleStars(isStarsOn);
+        window.changeMapLayer(activeMap);
+        window.toggleAutoRotate(isRotating);
+        
+        if (window.setBathyEnabled) window.setBathyEnabled(bathyEnabled, vertExagg);
+        if (window.setBathyOpacity) window.setBathyOpacity(bathyOpacity);
+        if (window.setGlobeExaggeration) window.setGlobeExaggeration(vertExagg);
+        
+        if (window.is3DView !== undefined && window.is3DView !== is3D && window.toggle2D3D) {
+          window.toggle2D3D();
+        }
+        
+        // Let the main useEffect know the viewer is ready to receive ocean config
+        setViewerReady(true);
+        
+        clearInterval(syncInterval);
+      } else if (attempts > 50) {
+        clearInterval(syncInterval);
+      }
+    }, 200);
+    return () => clearInterval(syncInterval);
+  }, []);
+
   // Handle clicking outside of dropdowns to close them
   useEffect(() => {
     function handleClickOutside(event) {
@@ -90,20 +122,20 @@ export default function Dashboard() {
 
   // ── Layer Settings State ──────────────────────────────
   const [activeLayers, setActiveLayers] = useLocalStorage('polaris_activeLayers', {})
-  const [bathyEnabled, setBathyEnabled] = useLocalStorage('polaris_bathyEnabled', true)
+  const [bathyEnabled, setBathyEnabled] = useLocalStorage('polaris_bathyEnabled', false)
   const [bathyOpacity, setBathyOpacity] = useLocalStorage('polaris_bathyOpacity', 100)
-  const [bathyColorMapIdx, setBathyColorMapIdx] = useLocalStorage('polaris_bathyColorMapIdx', 0)
+  const [bathyColorMapIdx, setBathyColorMapIdx] = useLocalStorage('polaris_bathyColorMapIdx', 4)
   const [bathyInverted, setBathyInverted] = useLocalStorage('polaris_bathyInverted', false)
   const [bathyStepwise, setBathyStepwise] = useLocalStorage('polaris_bathyStepwise', false)
   const [bathySteps, setBathySteps] = useLocalStorage('polaris_bathySteps', 5)
   const [bathyMasked, setBathyMasked] = useLocalStorage('polaris_bathyMasked', false)
   const [showBathySettings, setShowBathySettings] = useLocalStorage('polaris_showBathySettings', true)
-  const [vertExagg, setVertExagg] = useLocalStorage('polaris_vertExagg', 1.5)
+  const [vertExagg, setVertExagg] = useLocalStorage('polaris_vertExagg', 80.0)
   const [crossHeight, setCrossHeight] = useLocalStorage('polaris_crossHeight', 200)
 
   // ── Ocean Variables State ─────────────────────────────
   const [oceanTab, setOceanTab] = useLocalStorage('polaris_oceanTab', 'Physical')
-  const [activeOceanVar, setActiveOceanVar] = useLocalStorage('polaris_activeOceanVar', 'Temperature')
+  const [activeOceanVar, setActiveOceanVar] = useLocalStorage('polaris_activeOceanVar', null)
   const [showVarSettings, setShowVarSettings] = useLocalStorage('polaris_ocean_showVarSettings', {})
   const [opacity, setOpacity] = useLocalStorage('polaris_ocean_opacity', {})
   const [colorMapIdx, setColorMapIdx] = useLocalStorage('polaris_ocean_colorMapIdx', {})
@@ -111,10 +143,15 @@ export default function Dashboard() {
   const [varStepwise, setVarStepwise] = useLocalStorage('polaris_ocean_varStepwise', {})
   const [varSteps, setVarSteps] = useLocalStorage('polaris_ocean_varSteps', {})
   const [varMasked, setVarMasked] = useLocalStorage('polaris_ocean_varMasked', {})
+  const [varClipMin, setVarClipMin] = useLocalStorage('polaris_ocean_clipMin', {})
+  const [varClipMax, setVarClipMax] = useLocalStorage('polaris_ocean_clipMax', {})
   const [varMin, setVarMin] = useLocalStorage('polaris_ocean_varMin', {})
   const [varMax, setVarMax] = useLocalStorage('polaris_ocean_varMax', {})
   const [customColor1_ocean, setCustomColor1_ocean] = useLocalStorage('polaris_ocean_customColor1', {})
   const [customColor2_ocean, setCustomColor2_ocean] = useLocalStorage('polaris_ocean_customColor2', {})
+  
+  const [oceanDepth, setOceanDepth] = useLocalStorage('polaris_oceanDepth', 0)
+  const [oceanDensity, setOceanDensity] = useLocalStorage('polaris_oceanDensity', 25)
   
   // Shared advanced settings state (Bathymetry)
   const [customColor1, setCustomColor1] = useLocalStorage('polaris_customColor1', '#3b82f6')
@@ -123,42 +160,125 @@ export default function Dashboard() {
   const [bathyMin, setBathyMin] = useLocalStorage('polaris_bathyMin', '-6000')
   const [bathyMax, setBathyMax] = useLocalStorage('polaris_bathyMax', '0')
 
+  useEffect(() => {
+    if (window.setBathyEnabled) window.setBathyEnabled(bathyEnabled, vertExagg);
+  }, [bathyEnabled, vertExagg]);
+
+  useEffect(() => {
+    if (window.setBathyOpacity) window.setBathyOpacity(bathyOpacity);
+  }, [bathyOpacity]);
+
+  useEffect(() => {
+    if (window.setGlobeExaggeration) window.setGlobeExaggeration(vertExagg);
+  }, [vertExagg]);
+
+  // Handle opacity changes instantly via WebGL alpha without destroying the layer
+  useEffect(() => {
+    if (window.updateOceanOpacity) {
+      window.updateOceanOpacity((opacity['Sea Surface Temperature'] ?? 100) / 100.0);
+    }
+  }, [opacity['Sea Surface Temperature']]);
+
   const baseColorMaps = [
-    { label: 'Thermal', bg: 'linear-gradient(to right, #1a1a3a, #5b326d, #c5535c, #f6a157, #fdf870)' },
-    { label: 'Viridis', bg: 'linear-gradient(to right, #440154, #31688e, #35b779, #fde725)' },
     { label: 'Jet',     bg: 'linear-gradient(to right, #000080, #0000ff, #00ffff, #ffff00, #ff0000)' },
+    { label: 'Viridis', bg: 'linear-gradient(to right, #440154, #3b528b, #21918c, #5ec962, #fde725)' },
+    { label: 'Plasma',  bg: 'linear-gradient(to right, #0d0887, #7e03a8, #cc4778, #f89540, #f0f921)' },
+    { label: 'Turbo',   bg: 'linear-gradient(to right, #30123b, #28bbec, #a2ffa4, #fb8022, #7a0403)' },
+    { label: 'Thermal', bg: 'linear-gradient(to right, #0b0405, #35193e, #701f57, #b02a63, #e55355)' },
+
+    { label: 'Blues',   bg: 'linear-gradient(to right, #f7fbff, #08306b)' },
+    { label: 'Reds',    bg: 'linear-gradient(to right, #fff5f0, #67000d)' },
+    { label: 'Greens',  bg: 'linear-gradient(to right, #f7fcf5, #00441b)' },
     { label: 'Grayscale', bg: 'linear-gradient(to right, #000000, #ffffff)' },
-    { label: 'Deep Blue', bg: 'linear-gradient(to right, #000033, #0033aa, #0099ff, #aaddff, #ffffff)' },
+    { label: 'Custom',  bg: 'linear-gradient(to right, #333333, #cccccc)' }
+  ];
 
-    { label: 'ETOPO',   bg: 'linear-gradient(to right, #000050, #1a5276, #2e86c1, #85c1e9, #d6eaf8)' },
-    { label: 'Inferno', bg: 'linear-gradient(to right, #000004, #420a68, #932667, #dd513a, #fca50a)' },
-    { label: 'Terrain', bg: 'linear-gradient(to right, #1a0533, #5b2d8e, #2980b9, #27ae60, #f0e68c)' },
-    { label: 'Plasma',  bg: 'linear-gradient(to right, #0d0887, #7e03a8, #cc4678, #f89441, #f0f921)' },
-    { label: 'Magma',   bg: 'linear-gradient(to right, #000004, #50127b, #b63679, #fb8861, #fcffa4)' },
-
-    { label: 'Ocean',   bg: 'linear-gradient(to right, #002244, #005588, #0088cc, #00bbff, #eeffff)' },
-    { label: 'Cool',    bg: 'linear-gradient(to right, #00ffff, #ff00ff)' },
-    { label: 'Warm',    bg: 'linear-gradient(to right, #0000ff, #ff0000)' },
-    { label: 'Spectral',bg: 'linear-gradient(to right, #9e0142, #d53e4f, #f46d43, #fdae61, #fee08b)' },
-    { label: 'Rainbow', bg: 'linear-gradient(to right, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff)' },
-
-    { label: 'Reds',    bg: 'linear-gradient(to right, #fff5f0, #fb6a4a, #cb181d, #67000d)' },
-    { label: 'Greens',  bg: 'linear-gradient(to right, #f7fcf5, #74c476, #238b45, #00441b)' },
-    { label: 'Blues',   bg: 'linear-gradient(to right, #f7fbff, #6baed6, #2171b5, #08306b)' },
-    { label: 'Purples', bg: 'linear-gradient(to right, #fcfbfd, #9e9ac8, #6a51a3, #3f007d)' },
-    { label: 'Oranges', bg: 'linear-gradient(to right, #fff5eb, #fd8d3c, #d94801, #7f2704)' },
-
-    { label: 'YlOrRd',  bg: 'linear-gradient(to right, #ffffb2, #fecc5c, #fd8d3c, #e31a1c)' },
-    { label: 'YlGnBu',  bg: 'linear-gradient(to right, #ffffcc, #a1dab4, #41b6c4, #225ea8)' },
-    { label: 'PuOr',    bg: 'linear-gradient(to right, #b35806, #f1a340, #f7f7f7, #998ec3, #542788)' },
-    { label: 'RdYlBu',  bg: 'linear-gradient(to right, #d73027, #fc8d59, #fee090, #e0f3f8, #91bfdb)' },
-    { label: 'Custom',  bg: 'linear-gradient(to right, #333333, #cccccc)' },
-  ]
-
-  const getProcessedGradient = (idx, inverted, stepwise, stepsCount = 5) => {
+  const currentColorMapInfo = useMemo(() => {
+    if (!activeOceanVar) return null;
+    const idx = colorMapIdx[activeOceanVar] ?? 0;
+    const cInverted = varInverted[activeOceanVar] ?? false;
+    let color1 = '#000000', color2 = '#ffffff';
+    
+    if (idx === 9) {
+      color1 = customColor1_ocean[activeOceanVar] ?? '#3b82f6';
+      color2 = customColor2_ocean[activeOceanVar] ?? '#10b981';
+    }
+    
     let bg = baseColorMaps[idx]?.bg || '';
-    if (idx === 24) {
-      bg = `linear-gradient(to right, ${customColor1}, ${customColor2})`;
+    if (idx === 9) bg = `linear-gradient(to right, ${color1}, ${color2})`;
+    
+    let colors = bg.match(/#[0-9a-fA-F]{3,6}/g) || ['#000000', '#ffffff'];
+    if (cInverted) colors = [...colors].reverse();
+    
+    let sampledColors = [];
+    for (let i = 0; i < 5; i++) {
+      let t = i / 4.0;
+      let idxF = t * (colors.length - 1);
+      let idx1 = Math.floor(idxF);
+      let idx2 = Math.ceil(idxF);
+      let frac = idxF - idx1;
+      
+      let hex1 = colors[idx1].replace('#','');
+      let hex2 = colors[idx2].replace('#','');
+      if (hex1.length === 3) hex1 = hex1.split('').map(c => c+c).join('');
+      if (hex2.length === 3) hex2 = hex2.split('').map(c => c+c).join('');
+      
+      let r1 = parseInt(hex1.substring(0,2), 16), g1 = parseInt(hex1.substring(2,4), 16), b1 = parseInt(hex1.substring(4,6), 16);
+      let r2 = parseInt(hex2.substring(0,2), 16), g2 = parseInt(hex2.substring(2,4), 16), b2 = parseInt(hex2.substring(4,6), 16);
+      
+      let r = Math.round(r1 + (r2 - r1) * frac);
+      let g = Math.round(g1 + (g2 - g1) * frac);
+      let b = Math.round(b1 + (b2 - b1) * frac);
+      
+      sampledColors.push(`#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`);
+    }
+    
+    const uMin = varMin[activeOceanVar] !== undefined ? parseFloat(varMin[activeOceanVar]) : null;
+    const uMax = varMax[activeOceanVar] !== undefined ? parseFloat(varMax[activeOceanVar]) : null;
+    
+    const clipMin = varClipMin[activeOceanVar] ?? 0;
+    const clipMax = varClipMax[activeOceanVar] ?? 100;
+    
+    return { colors: sampledColors, uMin, uMax, clipMin, clipMax };
+  }, [activeOceanVar, colorMapIdx, varInverted, customColor1_ocean, customColor2_ocean, varMin, varMax, varClipMin, varClipMax, baseColorMaps]);
+
+  // Handle toggling the layer on/off
+  useEffect(() => {
+    if (window.setOceanVariable) {
+      if (activeOceanVar) {
+        window.setOceanVariable(activeOceanVar, true, { 
+          opacity: (opacity[activeOceanVar] ?? 100) / 100.0,
+          oceanDepth: oceanDepth,
+          oceanDensity: oceanDensity,
+          colormapSettings: {
+            colors: currentColorMapInfo ? currentColorMapInfo.colors : null,
+            uMin: varMin[activeOceanVar] !== undefined ? parseFloat(varMin[activeOceanVar]) : undefined,
+            uMax: varMax[activeOceanVar] !== undefined ? parseFloat(varMax[activeOceanVar]) : undefined,
+            clipMin: varClipMin[activeOceanVar] ?? 0,
+            clipMax: varClipMax[activeOceanVar] ?? 100,
+            inverted: varInverted[activeOceanVar] ?? false,
+            stepwise: varStepwise[activeOceanVar] ?? false,
+            steps: varSteps[activeOceanVar] ?? 5
+          }
+        });
+      } else {
+        window.setOceanVariable('Temperature', false); // The variable name doesn't matter if isActive is false
+      }
+    }
+  }, [viewerReady, activeOceanVar, opacity, oceanDepth, oceanDensity, currentColorMapInfo, varMin, varMax, varClipMin, varClipMax, varInverted, varStepwise, varSteps]);
+
+
+
+  useEffect(() => {
+    if (window.updateOceanColormap && currentColorMapInfo) {
+      window.updateOceanColormap(currentColorMapInfo);
+    }
+  }, [currentColorMapInfo]);
+
+  const getProcessedGradient = (idx, inverted, stepwise, stepsCount = 5, cc1 = customColor1, cc2 = customColor2) => {
+    let bg = baseColorMaps[idx]?.bg || '';
+    if (idx === 9) {
+      bg = `linear-gradient(to right, ${cc1}, ${cc2})`;
     }
     
     if (stepwise) {
@@ -572,89 +692,7 @@ export default function Dashboard() {
                         onChange={e => setBathyOpacity(parseInt(e.target.value))} />
                       <span style={{ width: '36px', textAlign: 'right', fontSize: '11px', fontWeight: 600 }}>{bathyOpacity}%</span>
                     </div>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}>
-                        <div className="gradient-bar" style={{ 
-                          flex: 1,
-                          background: getProcessedGradient(bathyColorMapIdx, bathyInverted, bathyStepwise, bathySteps), 
-                          marginTop: 0,
-                          WebkitMaskImage: bathyMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none',
-                          maskImage: bathyMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none'
-                        }} />
-                        <button className="icon-btn-flat"
-                          style={{ flexShrink: 0, padding: 0, display: 'flex', alignItems: 'center' }}
-                          onClick={e => { e.stopPropagation(); setShowBathySettings(s => !s); }}>
-                          <Settings2 size={16} color={showBathySettings ? '#3b82f6' : '#064274'} />
-                        </button>
-                      </div>
-                      <div className="gradient-labels" style={{ paddingRight: '28px' }}>
-                        {(() => {
-                          const [dMin, dMid, dMax] = getDisplayLimits(bathyMin, bathyMax, bathyMasked, 'm');
-                          return <><span style={{ position: 'relative', left: bathyMasked ? '1.5%' : 0 }}>{dMin}</span><span>{dMid}</span><span style={{ position: 'relative', right: bathyMasked ? '1.5%' : 0 }}>{dMax}</span></>;
-                        })()}
-                      </div>
-                    </div>
-                    {showBathySettings && (
-                      <div className="var-settings">
 
-
-                        <div className="var-settings-row" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span>Colour map</span>
-                          <div style={{ display: 'flex', gap: '12px' }}>
-                            <button className="icon-btn-flat" title="Invert color map" onClick={e=>{e.stopPropagation(); setBathyInverted(v=>!v)}}>
-                              <ArrowRightLeft size={15} color={bathyInverted ? '#3b82f6' : '#333'} />
-                            </button>
-                            <button className="icon-btn-flat" title="Stepwise color map" onClick={e=>{e.stopPropagation(); setBathyStepwise(v=>!v)}}>
-                              <BarChart2 size={15} color={bathyStepwise ? '#3b82f6' : '#333'} />
-                            </button>
-                            <button className="icon-btn-flat" title="Mask edges" onClick={e=>{e.stopPropagation(); setBathyMasked(v=>!v)}}>
-                              <MoveHorizontal size={15} color={bathyMasked ? '#3b82f6' : '#333'} />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="color-swatch-grid" onClick={e=>e.stopPropagation()}>
-                          {baseColorMaps.slice(0, 10).map((cm, i) => (
-                            <div key={i}
-                              className={`color-swatch ${bathyColorMapIdx === i ? 'active' : ''}`}
-                              style={{ background: getProcessedGradient(i, false, false) }}
-                              onClick={() => setBathyColorMapIdx(i)}
-                              title={cm.label}
-                            />
-                          ))}
-                        </div>
-                        
-                        <div className="custom-color-row" onClick={e=>e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274' }}>Custom</span>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <input type="color" value={customColor1} onChange={e => {setCustomColor1(e.target.value); setBathyColorMapIdx(24);}} style={{ width: '24px', height: '16px', padding: 0, border: 'none' }} />
-                            <input type="color" value={customColor2} onChange={e => {setCustomColor2(e.target.value); setBathyColorMapIdx(24);}} style={{ width: '24px', height: '16px', padding: 0, border: 'none' }} />
-                          </div>
-                        </div>
-
-                        {bathyStepwise && (
-                          <div className="thresholds-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} onClick={e=>e.stopPropagation()}>
-                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274' }}>Thresholds:</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <button className="icon-btn-flat" style={{ fontSize: '16px', fontWeight: 'bold' }} onClick={() => setBathySteps(s => Math.max(2, s - 1))}>−</button>
-                              <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274', width: '20px', textAlign: 'center' }}>{bathySteps}</span>
-                              <button className="icon-btn-flat" style={{ fontSize: '16px', fontWeight: 'bold' }} onClick={() => setBathySteps(s => Math.min(20, s + 1))}>+</button>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="var-limits-row" onClick={e=>e.stopPropagation()}>
-                          <div className="limit-input">
-                            <span>Min:</span>
-                            <input type="text" value={bathyMin} onChange={e => setBathyMin(e.target.value)} />
-                          </div>
-                          <div className="limit-input">
-                            <span>Max:</span>
-                            <input type="text" value={bathyMax} onChange={e => setBathyMax(e.target.value)} />
-                          </div>
-                          <button className="auto-btn" onClick={() => { setBathyMin('-11000'); setBathyMax('0'); }}>Auto</button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -719,7 +757,7 @@ export default function Dashboard() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}>
                             <div className="gradient-bar" style={{ 
                               flex: 1,
-                              background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps), 
+                              background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps, customColor1, customColor2),
                               marginTop: 0,
                               WebkitMaskImage: curMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none',
                               maskImage: curMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none'
@@ -759,7 +797,7 @@ export default function Dashboard() {
                               {baseColorMaps.slice(0, 10).map((cm, i) => (
                                 <div key={i}
                                   className={`color-swatch ${curColorMapIdx === i ? 'active' : ''}`}
-                                  style={{ background: getProcessedGradient(i, false, false) }}
+                                  style={{ background: getProcessedGradient(i, false, false, 5, customColor1, customColor2) }}
                                   onClick={() => setColorMapIdx(prev => ({...prev, [vn]: i}))}
                                   title={cm.label}
                                 />
@@ -820,6 +858,34 @@ export default function Dashboard() {
               </div>
               <button className="close-btn" onClick={() => setActiveSidebar(null)}><X size={14} /></button>
             </div>
+            
+            <div style={{ padding: '0 16px 12px 16px' }}>
+              <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '8px', marginTop: '12px' }}>
+                <span style={{ width: '80px', fontSize: '11px', fontWeight: 600, color: '#064274' }}>Depth Slice</span>
+                <input type="range" min="-6000" max="0" step="10"
+                  style={{ flex: 1, background: getSliderBg(oceanDepth + 6000, 0, 6000) }}
+                  value={oceanDepth}
+                  onChange={e => {
+                    const depth = parseInt(e.target.value);
+                    setOceanDepth(depth);
+                    if (window.updateOceanDepth) window.updateOceanDepth(depth);
+                  }} />
+                <span style={{ width: '48px', textAlign: 'right', fontSize: '11px', fontWeight: 600, color: '#064274' }}>{oceanDepth}m</span>
+              </div>
+              <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ width: '80px', fontSize: '11px', fontWeight: 600, color: '#064274' }}>Translucency</span>
+                <input type="range" min="1" max="100" step="1"
+                  style={{ flex: 1, background: getSliderBg(oceanDensity, 1, 100) }}
+                  value={oceanDensity}
+                  onChange={e => {
+                    const density = parseInt(e.target.value);
+                    setOceanDensity(density);
+                    if (window.updateOceanDensity) window.updateOceanDensity(density);
+                  }} />
+                <span style={{ width: '48px', textAlign: 'right', fontSize: '11px', fontWeight: 600, color: '#064274' }}>{oceanDensity}%</span>
+              </div>
+            </div>
+
             <div className="panel-tabs primary-tabs">
               <button className={`tab ${oceanTab === 'Physical' ? 'active' : ''}`} onClick={() => setOceanTab('Physical')}>Physical</button>
               <button className={`tab ${oceanTab === 'Chemical' ? 'active' : ''}`} onClick={() => setOceanTab('Chemical')}>Chemical</button>
@@ -835,6 +901,8 @@ export default function Dashboard() {
                 const curStepwise = varStepwise[vn] ?? false;
                 const curSteps = varSteps[vn] ?? 5;
                 const curMasked = varMasked[vn] ?? false;
+                const curClipMin = varClipMin[vn] ?? 0;
+                const curClipMax = varClipMax[vn] ?? 100;
                 const curMin = varMin[vn] ?? v.min;
                 const curMax = varMax[vn] ?? v.max.split(' ')[0];
                 const curCC1 = customColor1_ocean[vn] ?? '#3b82f6';
@@ -879,26 +947,69 @@ export default function Dashboard() {
                           <span style={{ width: '36px', textAlign: 'right', fontSize: '11px', fontWeight: 600 }}>{curOpacity}%</span>
                         </div>
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}>
-                            <div className="gradient-bar" style={{ 
-                              flex: 1,
-                              background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps), 
-                              marginTop: 0,
-                              WebkitMaskImage: curMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none',
-                              maskImage: curMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none'
-                            }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ flex: 1 }}>
+                              <div className="custom-dual-slider-wrapper" style={{ position: 'relative', height: '24px', marginTop: '12px', marginBottom: '-4px' }}>
+                                {/* Tooltips */}
+                                {curClipMax - curClipMin < 18 ? (
+                                  <div style={{ position: 'absolute', left: `calc(${(curClipMin + curClipMax) / 2}% + ${5 - ((curClipMin + curClipMax) / 2) * 0.1}px)`, bottom: '100%', transform: 'translateX(-50%)', background: 'white', padding: '1px 3px', borderRadius: '3px', fontSize: '8.5px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', marginBottom: '-2px', whiteSpace: 'nowrap', zIndex: 11 }}>
+                                    {(parseFloat(curMin) + (curClipMin / 100) * (parseFloat(curMax) - parseFloat(curMin))).toFixed(1)} - {(parseFloat(curMin) + (curClipMax / 100) * (parseFloat(curMax) - parseFloat(curMin))).toFixed(1)} {v.max.match(/[^0-9.-]+$/)?.[0]?.trim() || ''}
+                                  </div>
+                                ) : (
+                                  <>
+                                    {/* Tooltip MIN */}
+                                    <div style={{ position: 'absolute', left: `calc(${curClipMin}% + ${5 - curClipMin * 0.1}px)`, bottom: '100%', transform: 'translateX(-50%)', background: 'white', padding: '1px 3px', borderRadius: '3px', fontSize: '8.5px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', marginBottom: '-2px', whiteSpace: 'nowrap', zIndex: 11 }}>
+                                      {(parseFloat(curMin) + (curClipMin / 100) * (parseFloat(curMax) - parseFloat(curMin))).toFixed(1)} {v.max.match(/[^0-9.-]+$/)?.[0]?.trim() || ''}
+                                    </div>
+                                    {/* Tooltip MAX */}
+                                    <div style={{ position: 'absolute', left: `calc(${curClipMax}% + ${5 - curClipMax * 0.1}px)`, bottom: '100%', transform: 'translateX(-50%)', background: 'white', padding: '1px 3px', borderRadius: '3px', fontSize: '8.5px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', marginBottom: '-2px', whiteSpace: 'nowrap', zIndex: 10 }}>
+                                      {(parseFloat(curMin) + (curClipMax / 100) * (parseFloat(curMax) - parseFloat(curMin))).toFixed(1)} {v.max.match(/[^0-9.-]+$/)?.[0]?.trim() || ''}
+                                    </div>
+                                  </>
+                                )}
+                                {/* Inactive Track Base */}
+                                <div style={{ position: 'absolute', top: '10px', left: 0, right: 0, height: '4px', background: '#e2e2e2', borderRadius: '4px', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)' }}></div>
+                                {/* Active Track Gradient (Full width, clipped to slider thumbs to prevent squishing) */}
+                                <div style={{ 
+                                  position: 'absolute', 
+                                  top: '10px', 
+                                  left: 0, 
+                                  right: 0, 
+                                  height: '4px', 
+                                  background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps, curCC1, curCC2), 
+                                  borderRadius: '4px',
+                                  clipPath: `inset(0 calc(100% - (${curClipMax}% + ${5 - curClipMax * 0.1}px)) 0 calc(${curClipMin}% + ${5 - curClipMin * 0.1}px))`
+                                }}></div>
+                                {/* Input MIN */}
+                                <input type="range" min="0" max="100" value={curClipMin}
+                                  onChange={e => setVarClipMin(prev => ({...prev, [vn]: Math.min(parseInt(e.target.value), curClipMax - 1)}))}
+                                  className="dual-slider"
+                                />
+                                {/* Input MAX */}
+                                <input type="range" min="0" max="100" value={curClipMax}
+                                  onChange={e => setVarClipMax(prev => ({...prev, [vn]: Math.max(parseInt(e.target.value), curClipMin + 1)}))}
+                                  className="dual-slider"
+                                />
+                              </div>
+                              <div className="gradient-bar" style={{ 
+                                background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps, curCC1, curCC2),
+                                marginTop: 0,
+                                WebkitMaskImage: curMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none',
+                                maskImage: curMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none'
+                              }} />
+                              <div className="gradient-labels" style={{ paddingRight: '28px', marginTop: '4px', marginBottom: '8px' }}>
+                                {(() => {
+                                  const unit = (v.max.match(/[^0-9.-]+$/) || [''])[0].trim();
+                                  const [dMin, dMid, dMax] = getDisplayLimits(curMin, curMax, curMasked, unit);
+                                  return <><span style={{ position: 'relative', left: curMasked ? '1.5%' : 0 }}>{dMin}</span><span>{dMid}</span><span style={{ position: 'relative', right: curMasked ? '1.5%' : 0 }}>{dMax}</span></>;
+                                })()}
+                              </div>
+                            </div>
                             <button className="icon-btn-flat"
                               style={{ flexShrink: 0, padding: 0, display: 'flex', alignItems: 'center' }}
                               onClick={() => setShowVarSettings(prev => ({...prev, [vn]: !(prev[vn] ?? true)}))}>
                               <Settings2 size={16} color={curSettingsOpen ? '#3b82f6' : '#064274'} />
                             </button>
-                          </div>
-                          <div className="gradient-labels" style={{ paddingRight: '28px' }}>
-                            {(() => {
-                              const unit = (v.max.match(/[^0-9.-]+$/) || [''])[0].trim();
-                              const [dMin, dMid, dMax] = getDisplayLimits(curMin, curMax, curMasked, unit);
-                              return <><span style={{ position: 'relative', left: curMasked ? '1.5%' : 0 }}>{dMin}</span><span>{dMid}</span><span style={{ position: 'relative', right: curMasked ? '1.5%' : 0 }}>{dMax}</span></>;
-                            })()}
                           </div>
                         </div>
                         {curSettingsOpen && (
@@ -919,12 +1030,12 @@ export default function Dashboard() {
                               </div>
                             </div>
                             <div className="color-swatch-grid" onClick={e=>e.stopPropagation()}>
-                              {baseColorMaps.slice(0, 10).map((cm, i) => (
+                              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
                                 <div key={i}
                                   className={`color-swatch ${curColorMapIdx === i ? 'active' : ''}`}
-                                  style={{ background: getProcessedGradient(i, false, false) }}
+                                  style={{ background: getProcessedGradient(i, false, false, 5, curCC1, curCC2) }}
                                   onClick={() => setColorMapIdx(prev => ({...prev, [vn]: i}))}
-                                  title={cm.label}
+                                  title={baseColorMaps[i].label}
                                 />
                               ))}
                             </div>
@@ -932,8 +1043,8 @@ export default function Dashboard() {
                             <div className="custom-color-row" onClick={e=>e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                               <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274' }}>Custom</span>
                               <div style={{ display: 'flex', gap: '8px' }}>
-                                <input type="color" value={curCC1} onChange={e => {const val = e.target.value; setCustomColor1_ocean(prev => ({...prev, [vn]: val})); setColorMapIdx(prev => ({...prev, [vn]: 24}));}} style={{ width: '24px', height: '16px', padding: 0, border: 'none' }} />
-                                <input type="color" value={curCC2} onChange={e => {const val = e.target.value; setCustomColor2_ocean(prev => ({...prev, [vn]: val})); setColorMapIdx(prev => ({...prev, [vn]: 24}));}} style={{ width: '24px', height: '16px', padding: 0, border: 'none' }} />
+                                <input type="color" value={curCC1} onChange={e => {const val = e.target.value; setCustomColor1_ocean(prev => ({...prev, [vn]: val})); setColorMapIdx(prev => ({...prev, [vn]: 9}));}} style={{ width: '24px', height: '16px', padding: 0, border: 'none' }} />
+                                <input type="color" value={curCC2} onChange={e => {const val = e.target.value; setCustomColor2_ocean(prev => ({...prev, [vn]: val})); setColorMapIdx(prev => ({...prev, [vn]: 9}));}} style={{ width: '24px', height: '16px', padding: 0, border: 'none' }} />
                               </div>
                             </div>
 
@@ -948,17 +1059,7 @@ export default function Dashboard() {
                               </div>
                             )}
 
-                            <div className="var-limits-row" onClick={e=>e.stopPropagation()}>
-                              <div className="limit-input">
-                                <span>Min:</span>
-                                <input type="text" value={curMin} onChange={e => {const val = e.target.value; setVarMin(prev => ({...prev, [vn]: val}));}} />
-                              </div>
-                              <div className="limit-input">
-                                <span>Max:</span>
-                                <input type="text" value={curMax} onChange={e => {const val = e.target.value; setVarMax(prev => ({...prev, [vn]: val}));}} />
-                              </div>
-                              <button className="auto-btn" onClick={() => { setVarMin(prev => ({...prev, [vn]: v.min})); setVarMax(prev => ({...prev, [vn]: v.max.split(' ')[0]})); }}>Auto</button>
-                            </div>
+                              {/* Min/Max input row was removed per user request */}
                           </div>
                         )}
                       </div>
