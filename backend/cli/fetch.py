@@ -14,68 +14,105 @@ sys.path.insert(0, str(backend_dir))
 
 from polaris.pipeline.ingestion import IngestionPipeline
 
-def fetch_cmems():
+def fetch_cmems(time_period="today", variables_group="all"):
     import copernicusmarine
     import os
+    from datetime import datetime, timedelta
     
-    logger.info("Fetching latest CMEMS GLORYS12V1 (Global Ocean Physics) data...")
-        
-    # We fetch exactly 1 day from 1 month ago (30 days ago)
-    # target_date_obj = datetime.utcnow() - timedelta(days=30)
-    # target_date = target_date_obj.strftime("%Y-%m-%d")
-    target_date = datetime.utcnow().strftime("%Y-%m-%d")
+    logger.info(f"Fetching CMEMS data (Period: {time_period}, Variables: {variables_group})")
     
-    cmems_targets = [
-        # {"dataset_id": "cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m", "var": "thetao"},
-        # {"dataset_id": "cmems_mod_glo_phy-so_anfc_0.083deg_P1D-m", "var": "so"},
-        {"dataset_id": "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m", "var": "uo"},
-        {"dataset_id": "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m", "var": "vo"}
-    ]
+    # Setup dates
+    end_date = datetime.utcnow()
+    if time_period == "today":
+        dates_to_fetch = [end_date]
+    elif time_period == "week":
+        dates_to_fetch = [end_date - timedelta(days=i) for i in range(7)]
+    elif time_period == "month":
+        dates_to_fetch = [end_date - timedelta(days=i) for i in range(30)]
+    elif time_period == "year":
+        dates_to_fetch = [end_date - timedelta(days=i) for i in range(365)]
+    else:
+        # Default to today if unrecognized, or we could parse YYYY-MM-DD
+        dates_to_fetch = [end_date]
+        
+    dates_to_fetch.reverse() # Chronological order
     
-    for target in cmems_targets:
-        dataset_id = target["dataset_id"]
-        var_name = target["var"]
+    VARIABLES_CONFIG = {
+        "thetao": {"dataset_id": "cmems_mod_glo_phy-thetao_anfc_0.083deg_P1D-m", "is_3d": True},
+        "so": {"dataset_id": "cmems_mod_glo_phy-so_anfc_0.083deg_P1D-m", "is_3d": True},
+        "zos": {"dataset_id": "cmems_mod_glo_phy_anfc_0.083deg_P1D-m", "is_3d": False},
+        "chl": {"dataset_id": "cmems_mod_glo_bgc-pft_anfc_0.25deg_P1D-m", "is_3d": True},
+        "o2": {"dataset_id": "cmems_mod_glo_bgc-bio_anfc_0.25deg_P1D-m", "is_3d": True},
+        "no3": {"dataset_id": "cmems_mod_glo_bgc-nut_anfc_0.25deg_P1D-m", "is_3d": True},
+        "po4": {"dataset_id": "cmems_mod_glo_bgc-nut_anfc_0.25deg_P1D-m", "is_3d": True},
+        "si": {"dataset_id": "cmems_mod_glo_bgc-nut_anfc_0.25deg_P1D-m", "is_3d": True},
+    }
+    
+    if variables_group == "all":
+        vars_to_fetch = list(VARIABLES_CONFIG.keys())
+    elif variables_group == "physics":
+        vars_to_fetch = ["thetao", "so", "zos"]
+    elif variables_group == "bgc":
+        vars_to_fetch = ["chl", "o2", "no3", "po4", "si"]
+    else:
+        vars_to_fetch = [v.strip() for v in variables_group.split(",")]
         
-        out_file = f"cmems_{var_name}_{target_date}.nc"
-        logger.info(f"--- Fetching {var_name} (Global for {target_date}) from {dataset_id} ---")
+    for target_date_obj in dates_to_fetch:
+        target_date = target_date_obj.strftime("%Y-%m-%d")
         
-        try:
-            copernicusmarine.subset(
-                dataset_id=dataset_id,
-                variables=[var_name],
-                # Full Globe Coverage
-                minimum_longitude=-180,
-                maximum_longitude=179.99,
-                minimum_latitude=-90,
-                maximum_latitude=90,
-                minimum_depth=0,
-                maximum_depth=5000,
-                # Single day
-                start_datetime=f"{target_date} 00:00:00",
-                end_datetime=f"{target_date} 23:59:59",
-                output_filename=out_file,
-                output_directory=str(RAW_DATA_DIR),
-                force_download=True,
-            )
+        for var_name in vars_to_fetch:
+            if var_name not in VARIABLES_CONFIG:
+                logger.warning(f"Variable {var_name} not recognized. Skipping.")
+                continue
+                
+            config = VARIABLES_CONFIG[var_name]
+            dataset_id = config["dataset_id"]
+            is_3d = config["is_3d"]
             
-            filepath = RAW_DATA_DIR / out_file
-            logger.info(f"Download complete: {filepath}")
+            out_file = f"cmems_{var_name}_{target_date}.nc"
+            logger.info(f"--- Fetching {var_name} (Global for {target_date}) from {dataset_id} ---")
             
-            # Now automatically ingest it!
-            pipeline = IngestionPipeline()
-            result = pipeline.ingest(str(filepath), tier="daily", time_key=target_date)
-            logger.info(f"Ingestion complete for {var_name}. Result: {result}")
-            
-            # Clean up raw file to prevent out-of-disk-space errors
             try:
-                os.remove(filepath)
-                logger.info(f"Deleted raw temporary file: {out_file} to save space.")
-            except Exception as cleanup_err:
-                logger.warning(f"Could not delete {out_file}: {cleanup_err}")
-            
-        except Exception as e:
-            logger.error(f"Error downloading {var_name}: {e}")
-            logger.info("Make sure you have authenticated using 'copernicusmarine login'")
+                # 2D datasets don't use depth
+                depth_args = {}
+                if is_3d:
+                    depth_args = {
+                        "minimum_depth": 0,
+                        "maximum_depth": 5000
+                    }
+                    
+                copernicusmarine.subset(
+                    dataset_id=dataset_id,
+                    variables=[var_name],
+                    minimum_longitude=-180,
+                    maximum_longitude=179.99,
+                    minimum_latitude=-90,
+                    maximum_latitude=90,
+                    start_datetime=f"{target_date} 00:00:00",
+                    end_datetime=f"{target_date} 23:59:59",
+                    output_filename=out_file,
+                    output_directory=str(RAW_DATA_DIR),
+                    force_download=True,
+                    **depth_args
+                )
+                
+                filepath = RAW_DATA_DIR / out_file
+                logger.info(f"Download complete: {filepath}")
+                
+                # Automatically ingest it
+                pipeline = IngestionPipeline()
+                result = pipeline.ingest(str(filepath), tier="daily", time_key=target_date)
+                logger.info(f"Ingestion complete for {var_name}. Result: {result}")
+                
+                # Clean up raw file
+                try:
+                    os.remove(filepath)
+                    logger.info(f"Deleted raw temporary file: {out_file} to save space.")
+                except Exception as cleanup_err:
+                    logger.warning(f"Could not delete {out_file}: {cleanup_err}")
+                
+            except Exception as e:
+                logger.error(f"Error downloading {var_name} for {target_date}: {e}")
 
 def fetch_ibtracs():
     
@@ -727,11 +764,20 @@ def fetch_insitu():
 
 def main():
     parser = argparse.ArgumentParser(description="Fetch ocean data for POLARIS.")
-    parser.add_argument("--source", choices=["cmems", "ibtracs", "gdacs", "spills", "insitu", "bathymetry"], required=True, help="Data source to fetch from.")
+    parser.add_argument("--source", choices=["cmems", "ibtracs", "gdacs", "spills", "insitu", "bathymetry"], help="Legacy: Data source to fetch from.")
+    parser.add_argument("--cmems", nargs='*', help="Fetch CMEMS data. Args: [time_period] [variables]. E.g. --cmems today all, --cmems year physics")
     
     args = parser.parse_args()
     
-    if args.source == "cmems":
+    if args.cmems is not None:
+        time_period = "today"
+        variables = "all"
+        if len(args.cmems) >= 1:
+            time_period = args.cmems[0]
+        if len(args.cmems) >= 2:
+            variables = args.cmems[1]
+        fetch_cmems(time_period=time_period, variables_group=variables)
+    elif args.source == "cmems":
         fetch_cmems()
     elif args.source == "ibtracs":
         fetch_ibtracs()

@@ -15,6 +15,11 @@ import {
   ScreenSpaceEventType,
   EasingFunction,
   EllipsoidTerrainProvider,
+  CustomDataSource,
+  HeightReference,
+  NearFarScalar,
+  VerticalOrigin,
+  PolylineDashMaterialProperty,
 } from 'cesium'
 import { Navigation, Plus, Minus, X } from 'lucide-react'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
@@ -82,6 +87,69 @@ export default function GlobeView() {
       setVolumeConfig(config);
       viewerRef.current.scene.requestRender();
     };
+    window.active2DLayers = window.active2DLayers || {};
+    window.set2DLayer = async (varName, isActive, options = {}) => {
+      if (!viewerRef.current) return;
+      const viewer = viewerRef.current;
+      
+      const variableMap = {
+        'Sea Surface Temperature': 'temperature',
+        'Sea Surface Height': 'ssh',
+        'Surface Currents': 'currents'
+      };
+      const variable = variableMap[varName];
+      if (!variable) return;
+
+      if (window.active2DLayers[varName]) {
+        if (!isActive) {
+          viewer.scene.imageryLayers.remove(window.active2DLayers[varName]);
+          delete window.active2DLayers[varName];
+          viewer.scene.requestRender();
+          return;
+        }
+      }
+
+      if (isActive) {
+        const timeKey = '2026-09-21';
+        let urlTemplate = `http://localhost:8000/api/v1/data/${variable}/daily/${timeKey}/tile/{z}/{x}/{y}?depth=0`;
+
+        try {
+          const provider = new OceanTileProvider({
+            url: urlTemplate,
+            vmin: options.vmin !== null ? options.vmin : undefined,
+            vmax: options.vmax !== null ? options.vmax : undefined,
+            colormapSettings: options.colormapSettings,
+            opacity: options.opacity !== undefined ? options.opacity : 1.0,
+            maximumLevel: 4
+          });
+          
+          const newLayer = new ImageryLayer(provider, {
+            alpha: options.opacity !== undefined ? options.opacity : 1.0
+          });
+          
+          // To prevent visual flashing, we add the new layer first, 
+          // and then remove the old layer after a short delay (allowing new tiles to decode from browser cache)
+          const oldLayer = window.active2DLayers[varName];
+          window.active2DLayers[varName] = newLayer;
+          viewer.scene.imageryLayers.add(newLayer);
+          
+          if (oldLayer) {
+            setTimeout(() => {
+              if (viewer.scene.imageryLayers.contains(oldLayer)) {
+                viewer.scene.imageryLayers.remove(oldLayer);
+                viewer.scene.requestRender();
+              }
+            }, 300); // 300ms is usually enough for cached tiles to pop in
+          }
+          
+          viewer.scene.requestRender();
+        } catch (e) {
+          console.error('[POLARIS] Failed to load 2D layer:', e);
+        }
+      }
+      viewer.scene.requestRender();
+
+    };
   }
 
   useEffect(() => {
@@ -142,8 +210,10 @@ export default function GlobeView() {
         creditContainer:         document.createElement('div'),
         // Removed skyBox: false so Cesium loads its default starry cosmic background
         skyAtmosphere:           false,
-        imageryProvider:         false,
       })
+
+      // Prevent double-clicking from changing the camera's reference frame (locking onto entities)
+      viewer.screenSpaceEventHandler.removeInputAction(ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
 
       viewerRef.current = viewer
       setViewerReady(true) // triggers re-render + pending config flush
@@ -177,8 +247,9 @@ export default function GlobeView() {
       globe.loadingDescendantLimit = 20
       
       // After 5 seconds, unleash the GPU and crank all settings to maximum!
+      // After 5 seconds, unleash the GPU and crank all settings to maximum (if user hasn't overridden)!
       setTimeout(() => {
-        if (!isActive()) return
+        if (!isActive() || window.polarisHasCustomLOD) return
         globe.maximumScreenSpaceError = 0.45
         globe.preloadSiblings = true
         globe.loadingDescendantLimit = 200
@@ -203,6 +274,101 @@ export default function GlobeView() {
       
       window.is3DView = false;
       
+      window.setVisualQuality = (val) => {
+        if (!viewerRef.current) return;
+        window.polarisHasCustomLOD = true;
+        
+        // Exponential scale: 1 -> 5.0 (Fast), 10 -> 0.05 (Extreme Quality)
+        // 5.0 * 10^(-(val - 1) / 4.5)
+        const error = 5.0 * Math.pow(10, -(val - 1) / 4.5);
+        viewerRef.current.scene.globe.maximumScreenSpaceError = error;
+        
+        // Also boost descendant limits at high quality to allow massive tile loading
+        viewerRef.current.scene.globe.loadingDescendantLimit = val * 100;
+        
+        viewerRef.current.scene.requestRender();
+      };
+
+      window.setTileCacheLimit = (val) => {
+        if (!viewerRef.current) return;
+        // Direct value from 1000 to 15000
+        viewerRef.current.scene.globe.tileCacheSize = val;
+      };
+
+      window.polarisSunlightEnabled = false;
+      window.polarisAtmosphereGlow = 10;
+
+      window.updateAtmosphereAndSunlight = async () => {
+        if (!viewerRef.current) return;
+        const { ClockStep, JulianDate, SkyAtmosphere } = await import('cesium');
+        
+        // IMPORTANT: Read state AFTER the await to avoid race conditions during rapid state changes (like Reset Settings)
+        if (!viewerRef.current) return;
+        const scene = viewerRef.current.scene;
+        const globe = scene.globe;
+        const enableSun = window.polarisSunlightEnabled;
+        const glow = window.polarisAtmosphereGlow;
+
+        // 1. Lighting & Shadows
+        globe.enableLighting = enableSun;
+        viewerRef.current.shadows = enableSun;
+        
+        if (enableSun) {
+          viewerRef.current.clock.clockStep = ClockStep.SYSTEM_CLOCK;
+          viewerRef.current.clock.currentTime = JulianDate.now();
+          viewerRef.current.clock.shouldAnimate = true;
+          viewerRef.current.clock.multiplier = 1.0;
+        } else {
+          viewerRef.current.clock.shouldAnimate = false;
+        }
+        
+        // 2. Atmosphere
+        if (enableSun && glow > 0) {
+          if (!scene.skyAtmosphere) {
+            scene.skyAtmosphere = new SkyAtmosphere();
+          }
+          scene.skyAtmosphere.show = true;
+          globe.showGroundAtmosphere = true;
+          globe.atmosphereLightIntensity = glow * 0.16;
+        } else {
+          if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;
+          globe.showGroundAtmosphere = false;
+        }
+        
+        scene.requestRender();
+      };
+
+      window.setAtmosphereGlow = (val) => {
+        window.polarisAtmosphereGlow = val;
+        window.updateAtmosphereAndSunlight();
+      };
+
+      window.clearCesiumCache = (activeMap) => {
+        if (!viewerRef.current) return;
+        const globe = viewerRef.current.scene.globe;
+        
+        // 1. Flush the WebGL tile geometry cache
+        const currentSize = globe.tileCacheSize;
+        globe.tileCacheSize = 0; 
+        
+        // 2. Brutally destroy and recreate the imagery layer to flush the texture cache
+        if (window.currentBaseLayer) {
+            viewerRef.current.imageryLayers.remove(window.currentBaseLayer);
+            window.currentBaseLayer = null;
+        }
+        
+        if (window.changeMapLayer && activeMap) {
+            window.changeMapLayer(activeMap);
+        }
+
+        viewerRef.current.scene.requestRender();
+        
+        setTimeout(() => {
+          if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+             globe.tileCacheSize = currentSize;
+          }
+        }, 500);
+      };
       window.toggle2D3D = async () => {
         if (!viewerRef.current) return;
         const { Cartesian2, Cartesian3, Cartographic, BoundingSphere, HeadingPitchRange, Math: CesiumMath } = await import('cesium');
@@ -407,7 +573,6 @@ export default function GlobeView() {
         })
         if (!isActive()) return
         
-        viewer.imageryLayers.removeAll()
         const layer = viewer.imageryLayers.addImageryProvider(bathyProvider)
         layer.alpha = 1.0
         layer.show = false // Hide by default until Dashboard.jsx syncs the user's settings!
@@ -539,32 +704,11 @@ export default function GlobeView() {
       }
       
       // Sunlight & Shadows API
-      window.toggleSunlight = async (enable) => {
-        if (!viewerRef.current) return
-        const scene = viewerRef.current.scene
-        const { ShadowMode, JulianDate, ClockStep } = await import('cesium')
-        
-        scene.globe.enableLighting = enable
-        viewerRef.current.shadows = enable
-        // Terrain shadows disabled due to square artifacting at high exaggeration
-        viewerRef.current.terrainShadows = ShadowMode.DISABLED
-
-        if (enable) {
-          viewerRef.current.clock.clockStep = ClockStep.SYSTEM_CLOCK
-          viewerRef.current.clock.currentTime = JulianDate.now()
-          viewerRef.current.clock.shouldAnimate = true
-          viewerRef.current.clock.multiplier = 1.0
-        } else {
-          viewerRef.current.clock.shouldAnimate = false
-        }
-        
-        // Also toggle the skyAtmosphere on so we get realistic sunrise/sunset scatter effects!
-        if (enable && !scene.skyAtmosphere) {
-          const { SkyAtmosphere } = await import('cesium')
-          scene.skyAtmosphere = new SkyAtmosphere()
-        }
-        if (scene.skyAtmosphere) {
-          scene.skyAtmosphere.show = enable
+      // Sunlight & Shadows API
+      window.toggleSunlight = (enable) => {
+        window.polarisSunlightEnabled = enable;
+        if (window.updateAtmosphereAndSunlight) {
+           window.updateAtmosphereAndSunlight();
         }
       }
       
@@ -601,6 +745,219 @@ export default function GlobeView() {
       viewerRef.current = null
     }
   }, [])
+  
+  // ── FETCH AND MANAGE INSTRUMENTS ──────────────────────────────────────────
+  useEffect(() => {
+    if (!viewerReady) return;
+    const viewer = viewerRef.current;
+    
+    const instrumentsDataSource = new CustomDataSource('instruments');
+    viewer.dataSources.add(instrumentsDataSource);
+    
+    let allInstruments = [];
+    
+    const fetchInstruments = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/v1/instruments');
+        const data = await res.json();
+        allInstruments = data.data;
+        updateVisibility();
+      } catch (err) {
+        console.error("Failed to fetch instruments", err);
+      }
+    };
+    
+    const updateVisibility = () => {
+      instrumentsDataSource.entities.removeAll();
+      const stored = localStorage.getItem('polaris_instruments');
+      const toggles = stored ? JSON.parse(stored) : {};
+      
+      const typeMap = {
+        'Argo float': 'Argo float',
+        'Thermosalinometer': 'Thermosalinometer',
+        'Mooring': 'Mooring',
+        'Glider': 'Glider',
+        'CTD': 'CTD',
+        'Drifter - SVP': 'SVP',
+        'Drifter - SVPB': 'SVPB',
+        'Drifter - SVPBV': 'SVPBV'
+      };
+      
+      const activeTypes = Object.entries(toggles)
+        .filter(([k, v]) => v)
+        .map(([k, v]) => typeMap[k]);
+        
+      if (activeTypes.length === 0) return;
+      
+      const createIcon = (colorHex, type) => {
+        let svg = '';
+        if (type === 'Argo float' || type === 'Glider') {
+          // A cylinder/glider-like icon
+          svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="31" viewBox="0 0 24 31">
+                   <rect x="6" y="10" width="12" height="20" rx="6" fill="${colorHex}" stroke="black" stroke-width="2"/>
+                   <rect x="10" y="2" width="4" height="8" fill="gray" stroke="black" stroke-width="1"/>
+                 </svg>`;
+        } else if (type === 'Mooring') {
+          // A buoy-like icon
+          svg = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="26" viewBox="0 0 30 26">
+                   <path d="M5,15 L25,15 L15,25 Z" fill="${colorHex}" stroke="black" stroke-width="2"/>
+                   <circle cx="15" cy="10" r="5" fill="white" stroke="black" stroke-width="2"/>
+                 </svg>`;
+        } else {
+          // Generic sensor teardrop
+          svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="33" viewBox="0 0 24 33">
+                   <path d="M12 2 C6.48 2 2 6.48 2 12 C2 19.5 12 32 12 32 C12 32 22 19.5 22 12 C22 6.48 17.52 2 12 2 Z" fill="${colorHex}" stroke="black" stroke-width="2"/>
+                   <circle cx="12" cy="12" r="4" fill="white"/>
+                 </svg>`;
+        }
+        return 'data:image/svg+xml;base64,' + btoa(svg);
+      };
+
+      allInstruments.forEach(inst => {
+        if (activeTypes.includes(inst.instrument_type)) {
+          const colorMap = {
+            'Argo float': '#00FFFF',      // Aqua
+            'Thermosalinometer': '#FFA500',// Orange
+            'Mooring': '#32CD32',         // Lime
+            'Glider': '#FF00FF',          // Magenta
+            'CTD': '#FFFF00',             // Yellow
+            'SVP': '#FF0000',             // Red
+            'SVPB': '#FF0000',            
+            'SVPBV': '#FF0000',           
+          };
+          const colorHex = colorMap[inst.instrument_type] || '#FFFFFF';
+          const iconUrl = createIcon(colorHex, inst.instrument_type);
+          
+          instrumentsDataSource.entities.add({
+            id: 'inst_' + inst.instrument_id,
+            position: Cartesian3.fromDegrees(inst.lon, inst.lat, 2000), // 2km altitude to clear exaggerated terrain
+            billboard: {
+              image: iconUrl,
+              heightReference: HeightReference.RELATIVE_TO_GROUND,
+              sizeInMeters: true,
+              width: 30000,   // 30km physical width
+              height: 45000,  // 45km physical height
+              verticalOrigin: VerticalOrigin.BOTTOM,
+            },
+            properties: {
+              isInstrument: true,
+              ...inst
+            }
+          });
+        }
+      });
+      viewer.scene.requestRender();
+    };
+    
+    fetchInstruments();
+    
+    const handleStorageEvent = (e) => {
+      if (e.detail && e.detail.key === 'polaris_instruments') {
+        updateVisibility();
+      }
+    };
+    window.addEventListener('polaris-storage', handleStorageEvent);
+    
+    // Add Path Data Source
+    const pathDataSource = new CustomDataSource('instrumentPath');
+    viewer.dataSources.add(pathDataSource);
+
+    // Add Click Handler for Instruments
+    const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+    handler.setInputAction((click) => {
+      const pickedObject = viewer.scene.pick(click.position);
+      if (CesiumMath && pickedObject && pickedObject.id && pickedObject.id.properties?.isInstrument) {
+        const inst = pickedObject.id.properties;
+        const instId = inst.instrument_id.getValue();
+        console.log("Clicked instrument:", instId);
+        
+        // Dispatch event for UI Modal to listen to
+        window.dispatchEvent(new CustomEvent('polaris-instrument-select', { detail: instId }));
+
+        // Dim other instruments
+        instrumentsDataSource.entities.values.forEach(e => {
+          if (e.id === 'inst_' + instId) {
+            e.billboard.color = Color.WHITE;
+          } else {
+            e.billboard.color = Color.WHITE.withAlpha(0.2);
+          }
+        });
+        viewer.scene.requestRender();
+
+        // Clear previous path
+        pathDataSource.entities.removeAll();
+
+        fetch(`http://localhost:8000/api/v1/instruments/${instId}/profile`)
+          .then(res => res.json())
+          .then(data => {
+            // Dispatch event for UI Modal to listen to, passing the rich data
+            window.dispatchEvent(new CustomEvent('polaris-instrument-select', { detail: data }));
+            
+            if (!data.profiles || data.profiles.length === 0) return;
+            
+            const uniqueCoords = [];
+            const seen = new Set();
+            const reversedProfiles = [...data.profiles].reverse();
+            
+            reversedProfiles.forEach(p => {
+              const key = `${p.lat},${p.lon}`;
+              if (!seen.has(key)) {
+                seen.add(key);
+                uniqueCoords.push({ lat: parseFloat(p.lat), lon: parseFloat(p.lon) });
+              }
+            });
+
+            const currentLat = typeof inst.lat === 'object' && inst.lat.getValue ? inst.lat.getValue() : inst.lat;
+            const currentLon = typeof inst.lon === 'object' && inst.lon.getValue ? inst.lon.getValue() : inst.lon;
+            
+            const lastCoord = uniqueCoords[uniqueCoords.length - 1];
+            if (!lastCoord || lastCoord.lat !== currentLat || lastCoord.lon !== currentLon) {
+              uniqueCoords.push({ lat: currentLat, lon: currentLon });
+            }
+
+            if (uniqueCoords.length > 1) {
+              pathDataSource.entities.add({
+                polyline: {
+                  positions: uniqueCoords.map(p => Cartesian3.fromDegrees(p.lon, p.lat, 2000)),
+                  width: 1,
+                  material: Color.LIGHTGRAY.withAlpha(0.6)
+                }
+              });
+
+              uniqueCoords.slice(0, -1).forEach(p => {
+                pathDataSource.entities.add({
+                  position: Cartesian3.fromDegrees(p.lon, p.lat, 2000),
+                  point: {
+                    pixelSize: 6,
+                    color: Color.DARKGRAY,
+                    scaleByDistance: new NearFarScalar(1.0e4, 1.0, 1.0e7, 0.0),
+                    heightReference: HeightReference.RELATIVE_TO_GROUND
+                  }
+                });
+              });
+            }
+            viewer.scene.requestRender();
+          })
+          .catch(err => console.error("Failed to fetch profile for path", err));
+          
+      } else {
+        // Clicked off an instrument, reset
+        window.dispatchEvent(new CustomEvent('polaris-instrument-deselect'));
+        pathDataSource.entities.removeAll();
+        instrumentsDataSource.entities.values.forEach(e => {
+          e.billboard.color = Color.WHITE;
+        });
+        viewer.scene.requestRender();
+      }
+    }, ScreenSpaceEventType.LEFT_CLICK);
+    
+    return () => {
+      window.removeEventListener('polaris-storage', handleStorageEvent);
+      viewer.dataSources.remove(instrumentsDataSource);
+      viewer.dataSources.remove(pathDataSource);
+      handler.destroy();
+    };
+  }, [viewerReady]);
 
   return (
     <div className="globe-root">

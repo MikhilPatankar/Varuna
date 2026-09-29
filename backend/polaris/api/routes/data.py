@@ -131,7 +131,7 @@ async def get_depth_slice(
     lat_min: float = Query(...), lat_max: float = Query(...),
     lon_min: float = Query(...), lon_max: float = Query(...),
     depth: float = Query(0.0),
-    stride: int = Query(8, ge=1, le=64, description="Subsample every Nth point. stride=8 reduces 35MB global grid to ~0.55MB"),
+    stride: int = Query(4, ge=1, le=64, description="Subsample every Nth point. stride=4 reduces 35MB global grid to ~2MB"),
 ):
     """Return a 2D slice at a specific depth."""
     ds = get_cached_dataset(variable, tier, time_key)
@@ -299,7 +299,7 @@ def xyz_to_bbox_geographic(x, y, z):
 from cachetools import LRUCache
 _TILE_RESPONSE_CACHE = LRUCache(maxsize=128)
 
-@router.get("/{variable}/{tier}/{time_key}/tile/{z}/{x}/{y}")
+@router.api_route("/{variable}/{tier}/{time_key}/tile/{z}/{x}/{y}", methods=["GET", "HEAD"])
 def get_float_tile(
     variable: str, tier: str, time_key: str, z: int, x: int, y: int,
     depth: float = Query(None, description="If not specified, all depths are returned vertically stacked"),
@@ -319,6 +319,31 @@ def get_float_tile(
         return Response(status_code=404, content="Data not found")
 
     is_3d = ('depth' in ds.dims) and (depth is None)
+    
+    # Fast path: Serve pre-baked 3D tile if it exists
+    if is_3d:
+        from polaris.config import DATA_DIR
+        import json
+        from pathlib import Path
+        
+        tile_path = Path(DATA_DIR) / "tiles" / variable / tier / time_key / str(z) / f"{x}_{y}.bin"
+        if tile_path.exists():
+            content = tile_path.read_bytes()
+            newline_pos = content.find(b'\n')
+            if newline_pos != -1:
+                header = json.loads(content[:newline_pos])
+                payload = content[newline_pos + 1:]
+                
+                headers = {
+                    "X-Value-Min": str(header["vmin"]),
+                    "X-Value-Max": str(header["vmax"]),
+                    "X-Depth-Count": str(header["depth_count"]),
+                    "X-Depth-Levels": header["depth_levels"],
+                    "X-Encoding": header["encoding"],
+                    "Cache-Control": "max-age=86400",
+                }
+                return Response(content=payload, media_type="application/octet-stream", headers=headers)
+
     if is_3d and z == 0 and x == 0 and y == 0:
         lat_min, lat_max, lon_min, lon_max = -90.0, 90.0, -180.0, 180.0
     else:

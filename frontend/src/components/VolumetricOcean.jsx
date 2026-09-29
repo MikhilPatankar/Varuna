@@ -3,14 +3,15 @@ import * as Cesium from 'cesium';
 
 // ─── Voxel Provider ───────────────────────────────────────────────────────────
 class OceanVoxelProvider {
-  constructor(data, depthCount, maxDepthMeters) {
+  constructor(baseUrl, depthCount, maxDepthMeters) {
+    this.baseUrl = baseUrl;
+    this.depthCount = depthCount;
     this.globalTransform = Cesium.Matrix4.IDENTITY;
     this.shapeTransform  = Cesium.Matrix4.IDENTITY;
     this.shape = Cesium.VoxelShapeType.ELLIPSOID;
 
     // Bounds: ocean floor (z=-maxDepthMeters) UP to sea surface (z=0).
     // Cesium auto-applies scene.verticalExaggeration to these bounds.
-    // Data is flipped so surface (depth=0) is at maxBounds (z=0, texture N-1)
     this.minBounds = new Cesium.Cartesian3(-Cesium.Math.PI, -Cesium.Math.PI_OVER_TWO, -maxDepthMeters);
     this.maxBounds = new Cesium.Cartesian3( Cesium.Math.PI,  Cesium.Math.PI_OVER_TWO, 0);
 
@@ -23,76 +24,77 @@ class OceanVoxelProvider {
     this.minimumValues  = [[1]];
     this.maximumValues  = [[255]];
     this.maximumTileCount = 1;
-    this.availableLevels  = 1;
-    this._data = data;
+    this.availableLevels  = 1; 
   }
-  requestData() {
-    return Promise.resolve(new Cesium.VoxelContent({ metadata: [this._data] }));
+  
+  async requestData(options) {
+    // Force fetch 0/0/0 which covers the full globe
+    const url = this.baseUrl
+        .replace('{z}', 0)
+        .replace('{x}', 0)
+        .replace('{y}', 0);
+        
+    try {
+        const res = await fetch(url);
+        if (!res.ok) return undefined;
+        
+        const buf = await new Response(
+          res.body.pipeThrough(new DecompressionStream('gzip'))
+        ).arrayBuffer();
+        
+        const data = new Uint8Array(buf);
+        
+        // Data flip: align backend depth ordering with Cesium's Z-to-altitude mapping.
+        const gridXY = 256 * 256;
+        const flippedData = new Uint8Array(data.length);
+        for (let d = 0; d < this.depthCount; d++) {
+          const src = this.depthCount - 1 - d;
+          flippedData.set(data.subarray(src * gridXY, (src + 1) * gridXY), d * gridXY);
+        }
+        
+        return new Cesium.VoxelContent({ metadata: [flippedData] });
+    } catch(e) {
+        console.warn(`[VOL] Failed to load tile ${tileLevel}/${tileX}/${tileY}:`, e);
+        return undefined;
+    }
   }
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function VolumetricOcean({ viewer, variable, timeKey, opacity = 100, oceanDepth = 0, oceanDensity = 25, colormapSettings }) {
   const primitiveRef = useRef(null);
+  const [primitiveReady, setPrimitiveReady] = React.useState(false);
 
   useEffect(() => {
     if (!viewer) return;
     let active = true;
+    setPrimitiveReady(false);
 
     if (primitiveRef.current) {
       viewer.scene.primitives.remove(primitiveRef.current);
       primitiveRef.current = null;
     }
 
-    const url = `/api/v1/data/${variable}/daily/${timeKey}/tile/0/0/0`;
-    console.log('[VOL] Fetching:', url);
+    const baseUrl = `/api/v1/data/${variable}/daily/${timeKey}/tile/{z}/{x}/{y}`;
+    const initialUrl = baseUrl.replace('{z}', 0).replace('{x}', 0).replace('{y}', 0);
+    console.log('[VOL] Initializing provider from:', initialUrl);
 
     (async () => {
       try {
-        const res = await fetch(url);
+        // Fetch 0/0/0 just to get the metadata headers (min/max, depth layers)
+        const res = await fetch(initialUrl, { method: 'HEAD' });
         if (!res.ok || !active) return;
 
         // ── Parse headers ────────────────────────────────────────────────
-        // X-Depth-Count  : number of depth levels (e.g. 48)
-        // X-Depth-Levels : metres BELOW sea surface e.g. "0.0,5.0,...,4833.0"
         const depthCount  = parseInt(res.headers.get('X-Depth-Count') || '48', 10);
         const depthLevels = (res.headers.get('X-Depth-Levels') || '')
           .split(',').map(Number).filter(isFinite);
         const actualMaxDepth = depthLevels.length > 0 ? Math.max(...depthLevels) : 5000;
 
         console.log('[VOL] depthCount:', depthCount, '| maxDepth:', actualMaxDepth, 'm');
-        console.log('[VOL] depthLevels (first 5):', depthLevels.slice(0, 5), '| last 2:', depthLevels.slice(-2));
-
-        // ── Decompress gzip ──────────────────────────────────────────────
-        const buf = await new Response(
-          res.body.pipeThrough(new DecompressionStream('gzip'))
-        ).arrayBuffer();
-        if (!active) return;
-
-        const data = new Uint8Array(buf);
-        console.log('[VOL] Bytes decoded:', data.length, '| expected:', depthCount * 256 * 256);
-
-        // Data flip: align backend depth ordering with Cesium's Z-to-altitude mapping.
-        // Backend (C-order): bytes[d*65536..] = depth level d
-        //   d=0   => surface (0m, warmest)    d=N-1 => deepest (4833m, coldest)
-        //
-        // Underground bounds: texture z=0 -> altitude -actualMaxDepth (ocean floor)
-        //                     texture z=N-1 -> altitude 0 (sea surface)
-        //
-        // We want surface temperature (depth=0) at the TOP of the volume (z=N-1),
-        // so camera rays from above hit surface data FIRST.
-        //   texture[N-1] must carry depth[0]   (surface at top)
-        //   texture[0]   must carry depth[N-1] (deepest at ocean floor)
-        // => reverse depth axis
-        const gridXY      = 256 * 256;
-        const flippedData = new Uint8Array(data.length);
-        for (let d = 0; d < depthCount; d++) {
-          const src = depthCount - 1 - d;
-          flippedData.set(data.subarray(src * gridXY, (src + 1) * gridXY), d * gridXY);
-        }
 
         // ── Build primitive ──────────────────────────────────────────────
-        const provider  = new OceanVoxelProvider(flippedData, depthCount, actualMaxDepth);
+        const provider  = new OceanVoxelProvider(baseUrl, depthCount, actualMaxDepth);
         
         // CRITICAL: Without modelMatrix scaling, the ellipsoid defaults to 1 meter in size.
         // We must apply the WGS84 radii to match the globe.
@@ -206,6 +208,7 @@ export default function VolumetricOcean({ viewer, variable, timeKey, opacity = 1
 
         viewer.scene.primitives.add(primitive);
         primitiveRef.current = primitive;
+        setPrimitiveReady(true);
 
         // VoxelPrimitive needs ~60 render frames to warm up its GPU shaders
         let frames = 0;
@@ -243,6 +246,7 @@ export default function VolumetricOcean({ viewer, variable, timeKey, opacity = 1
       if (viewer && !viewer.isDestroyed() && viewer.scene?.globe) {
         viewer.scene.globe.translucency.enabled = false;
         viewer.scene.globe.depthTestAgainstTerrain = true;
+        viewer.scene.requestRender();
       }
     };
   }, [viewer, variable, timeKey]);
@@ -282,7 +286,7 @@ export default function VolumetricOcean({ viewer, variable, timeKey, opacity = 1
     }
     
     viewer?.scene.requestRender();
-  }, [opacity, oceanDensity, colormapSettings, viewer]);
+  }, [opacity, oceanDensity, colormapSettings, viewer, primitiveReady]);
 
   // Depth slice fast-path — clips the top of the volume dynamically
   useEffect(() => {

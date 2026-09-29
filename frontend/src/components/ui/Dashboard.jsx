@@ -28,6 +28,9 @@ function useLocalStorage(key, initialValue) {
       setStoredValue(valueToStore);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        window.dispatchEvent(new CustomEvent('polaris-storage', {
+          detail: { key, value: valueToStore }
+        }));
       }
     } catch (error) {
       console.warn(error);
@@ -68,6 +71,9 @@ export default function Dashboard() {
   const [isStarsOn, setIsStarsOn] = useLocalStorage('polaris_isStarsOn', true)
   const [isSunlightOn, setIsSunlightOn] = useLocalStorage('polaris_isSunlightOn', false)
   const [isRotating, setIsRotating] = useLocalStorage('polaris_isRotating', false)
+  const [visualQuality, setVisualQuality] = useLocalStorage('polaris_visualQuality', 6)
+  const [tileCacheLimit, setTileCacheLimit] = useLocalStorage('polaris_tileCacheLimit', 10000)
+  const [atmosphereGlow, setAtmosphereGlow] = useLocalStorage('polaris_atmosphereGlow', 10)
   const mapMenuRef = useRef(null)
   const [activeModal, setActiveModal] = useState(null)
 
@@ -93,6 +99,9 @@ export default function Dashboard() {
         if (window.setBathyEnabled) window.setBathyEnabled(bathyEnabled, vertExagg);
         if (window.setBathyOpacity) window.setBathyOpacity(bathyOpacity);
         if (window.setGlobeExaggeration) window.setGlobeExaggeration(vertExagg);
+        if (window.setVisualQuality) window.setVisualQuality(visualQuality);
+        if (window.setTileCacheLimit) window.setTileCacheLimit(tileCacheLimit);
+        if (window.setAtmosphereGlow) window.setAtmosphereGlow(atmosphereGlow);
         
         if (window.is3DView !== undefined && window.is3DView !== is3D && window.toggle2D3D) {
           window.toggle2D3D();
@@ -143,6 +152,7 @@ export default function Dashboard() {
   const [varStepwise, setVarStepwise] = useLocalStorage('polaris_ocean_varStepwise', {})
   const [varSteps, setVarSteps] = useLocalStorage('polaris_ocean_varSteps', {})
   const [varMasked, setVarMasked] = useLocalStorage('polaris_ocean_varMasked', {})
+  const [varMaskOutline, setVarMaskOutline] = useLocalStorage('polaris_ocean_maskOutline', {})
   const [varClipMin, setVarClipMin] = useLocalStorage('polaris_ocean_clipMin', {})
   const [varClipMax, setVarClipMax] = useLocalStorage('polaris_ocean_clipMax', {})
   const [varMin, setVarMin] = useLocalStorage('polaris_ocean_varMin', {})
@@ -190,18 +200,18 @@ export default function Dashboard() {
     { label: 'Reds',    bg: 'linear-gradient(to right, #fff5f0, #67000d)' },
     { label: 'Greens',  bg: 'linear-gradient(to right, #f7fcf5, #00441b)' },
     { label: 'Grayscale', bg: 'linear-gradient(to right, #000000, #ffffff)' },
-    { label: 'Custom',  bg: 'linear-gradient(to right, #333333, #cccccc)' }
+    { label: 'Steps',  bg: 'linear-gradient(to right, #333333, #cccccc)' }
   ];
 
-  const currentColorMapInfo = useMemo(() => {
-    if (!activeOceanVar) return null;
-    const idx = colorMapIdx[activeOceanVar] ?? 0;
-    const cInverted = varInverted[activeOceanVar] ?? false;
+  const getColorsForLayer = (layerName) => {
+    if (!layerName) return ['#000000', '#ffffff', '#ffffff', '#ffffff', '#ffffff'];
+    const idx = colorMapIdx[layerName] ?? 0;
+    const cInverted = varInverted[layerName] ?? false;
     let color1 = '#000000', color2 = '#ffffff';
     
     if (idx === 9) {
-      color1 = customColor1_ocean[activeOceanVar] ?? '#3b82f6';
-      color2 = customColor2_ocean[activeOceanVar] ?? '#10b981';
+      color1 = customColor1_ocean[layerName] ?? '#3b82f6';
+      color2 = customColor2_ocean[layerName] ?? '#10b981';
     }
     
     let bg = baseColorMaps[idx]?.bg || '';
@@ -232,6 +242,13 @@ export default function Dashboard() {
       
       sampledColors.push(`#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`);
     }
+    return sampledColors;
+  };
+
+  const currentColorMapInfo = useMemo(() => {
+    if (!activeOceanVar) return null;
+    
+    const sampledColors = getColorsForLayer(activeOceanVar);
     
     const uMin = varMin[activeOceanVar] !== undefined ? parseFloat(varMin[activeOceanVar]) : null;
     const uMax = varMax[activeOceanVar] !== undefined ? parseFloat(varMax[activeOceanVar]) : null;
@@ -258,16 +275,41 @@ export default function Dashboard() {
             clipMax: varClipMax[activeOceanVar] ?? 100,
             inverted: varInverted[activeOceanVar] ?? false,
             stepwise: varStepwise[activeOceanVar] ?? false,
-            steps: varSteps[activeOceanVar] ?? 5
+            steps: varSteps[activeOceanVar] ?? 5,
+            masked: varMasked[activeOceanVar] ?? false,
+            maskOutline: varMaskOutline[activeOceanVar] ?? 1.5
           }
         });
       } else {
         window.setOceanVariable('Temperature', false); // The variable name doesn't matter if isActive is false
       }
     }
-  }, [viewerReady, activeOceanVar, opacity, oceanDepth, oceanDensity, currentColorMapInfo, varMin, varMax, varClipMin, varClipMax, varInverted, varStepwise, varSteps]);
+  }, [viewerReady, activeOceanVar, opacity, oceanDepth, oceanDensity, currentColorMapInfo, varMin, varMax, varClipMin, varClipMax, varInverted, varStepwise, varSteps, varMasked, varMaskOutline]);
 
 
+
+  // Handle toggling the 2D layers on/off
+  useEffect(() => {
+    if (window.set2DLayer) {
+      ['Sea Surface Height', 'Sea Surface Temperature', 'Surface Currents'].forEach(layer => {
+        const isActive = activeLayers[layer] || false;
+        
+        window.set2DLayer(layer, isActive, {
+          opacity: (opacity[layer] ?? 100) / 100.0,
+          colormapSettings: {
+            colors: getColorsForLayer(layer),
+            inverted: varInverted[layer] ?? false,
+            stepwise: varStepwise[layer] ?? false,
+            steps: varSteps[layer] ?? 5,
+            masked: varMasked[layer] ?? false,
+            maskOutline: varMaskOutline[layer] ?? 1.5
+          },
+          vmin: varMin[layer] !== undefined ? parseFloat(varMin[layer]) : null,
+          vmax: varMax[layer] !== undefined ? parseFloat(varMax[layer]) : null
+        });
+      });
+    }
+  }, [activeLayers, opacity, colorMapIdx, varInverted, customColor1_ocean, customColor2_ocean, varStepwise, varSteps, varMin, varMax, viewerReady, varMasked, varMaskOutline]);
 
   useEffect(() => {
     if (window.updateOceanColormap && currentColorMapInfo) {
@@ -275,29 +317,59 @@ export default function Dashboard() {
     }
   }, [currentColorMapInfo]);
 
-  const getProcessedGradient = (idx, inverted, stepwise, stepsCount = 5, cc1 = customColor1, cc2 = customColor2) => {
+  const getProcessedGradient = (idx, inverted, stepwise, stepsCount = 5, cc1 = customColor1, cc2 = customColor2, masked = false, maskOutline = 1.5) => {
     let bg = baseColorMaps[idx]?.bg || '';
-    if (idx === 9) {
+    if (idx === 9 || idx === 24) {
       bg = `linear-gradient(to right, ${cc1}, ${cc2})`;
     }
     
-    if (stepwise) {
-      const colors = bg.match(/#[0-9a-fA-F]{3,6}|rgba?\([^)]+\)/g);
-      if (colors && colors.length > 0) {
-        let steps = [];
-        for (let i = 0; i < stepsCount; i++) {
-          const t = (i / Math.max(1, stepsCount - 1)) * (colors.length - 1);
-          const idx1 = Math.floor(t);
-          const idx2 = Math.ceil(t);
-          const pct = Math.round((t - idx1) * 100);
-          const c1 = colors[idx1];
-          const c2 = colors[idx2];
-          const c = (idx1 === idx2) ? c1 : `color-mix(in srgb, ${c2} ${pct}%, ${c1})`;
-          const stepSize = 100 / stepsCount;
-          steps.push(`${c} ${i * stepSize}%`, `${c} ${(i + 1) * stepSize}%`);
+    let colors = bg.match(/#[0-9a-fA-F]{3,6}|rgba?\([^)]+\)/g) || [];
+    let innerGradientStr = '';
+
+    if (stepwise && colors.length > 0) {
+      let steps = [];
+      for (let i = 0; i < stepsCount; i++) {
+        const t = (i / Math.max(1, stepsCount - 1)) * (colors.length - 1);
+        const idx1 = Math.floor(t);
+        const idx2 = Math.ceil(t);
+        const pct = Math.round((t - idx1) * 100);
+        const c1 = colors[idx1];
+        const c2 = colors[idx2];
+        const c = (idx1 === idx2) ? c1 : `color-mix(in srgb, ${c2} ${pct}%, ${c1})`;
+        
+        let startPct = (i / stepsCount) * 100;
+        let endPct = ((i + 1) / stepsCount) * 100;
+        
+        if (masked) {
+           const threshold = maskOutline / 2;
+           // Remap percentages so the steps fit inside the unmasked region
+           startPct = threshold + (startPct / 100) * (100 - maskOutline);
+           endPct = threshold + (endPct / 100) * (100 - maskOutline);
         }
-        bg = `linear-gradient(to right, ${steps.join(', ')})`;
+        
+        steps.push(`${c} ${startPct}%`, `${c} ${endPct}%`);
       }
+      innerGradientStr = steps.join(', ');
+    } else {
+      if (masked && colors.length > 0) {
+        const threshold = maskOutline / 2;
+        let stops = [];
+        for (let i = 0; i < colors.length; i++) {
+          const t = i / (colors.length - 1);
+          const mappedPct = threshold + t * (100 - maskOutline);
+          stops.push(`${colors[i]} ${mappedPct}%`);
+        }
+        innerGradientStr = stops.join(', ');
+      } else {
+        innerGradientStr = colors.join(', ');
+      }
+    }
+
+    if (masked) {
+      const threshold = maskOutline / 2;
+      bg = `linear-gradient(to right, #000000 0%, #000000 ${threshold}%, ${innerGradientStr}, #000000 ${100 - threshold}%, #000000 100%)`;
+    } else {
+      bg = `linear-gradient(to right, ${innerGradientStr})`;
     }
 
     if (inverted) {
@@ -325,12 +397,9 @@ export default function Dashboard() {
     'Tide Gauges': false, 'Acoustic Doppler': false,
   })
 
-  const physicalVars = [
+  const oceanVars = [
     { name: 'Temperature', icon: Thermometer, gradient: 'linear-gradient(to right, #1a1a3a, #5b326d, #c5535c, #f6a157, #fdf870)', min: '-2', mid: '14', max: '30 °C' },
-    { name: 'Salinity',    icon: Droplets,    gradient: 'linear-gradient(to right, #081d58, #253494, #1d91c0, #7fcdbb, #ffffd9)', min: '0',  mid: '20', max: '40 ‰'  },
-    { name: 'Currents',    icon: Wind,        gradient: 'linear-gradient(to right, #0d0221, #0a4bc7, #17b0d4, #e8f7fd)',          min: '0',  mid: '1.2',max: '2.5 m/s'},
-  ]
-  const chemicalVars = [
+    { name: 'Salinity',    icon: Droplets,    gradient: 'linear-gradient(to right, #081d58, #253494, #1d91c0, #7fcdbb, #ffffd9)', min: '30', mid: '35', max: '40 ‰'  },
     { name: 'Chlorophyll', icon: Droplet,     gradient: 'linear-gradient(to right, #ffffff, #d9f0a3, #78c679, #238443, #004529)', min: '0',  mid: '5',  max: '10 mg/m³'},
     { name: 'Oxygen',      icon: RefreshCw,   gradient: 'linear-gradient(to right, #67001f, #d6604d, #f7f7f7, #4393c3, #053061)', min: '0',  mid: '150',max: '300 µmol/L'},
     { name: 'Nitrate',     icon: Activity,    gradient: 'linear-gradient(to right, #fff7bc, #fec44f, #d95f0e)',                   min: '0',  mid: '20', max: '40 µmol/L'},
@@ -341,11 +410,11 @@ export default function Dashboard() {
 
 
   const sidebarItems = [
-    { name: 'Objects', icon: Box },
     { name: 'Layers', icon: Layers },
     { name: 'Ocean', icon: Waves },
     { name: 'Disasters', icon: Siren },
     { name: 'Sensors', icon: Radar },
+    { name: 'Settings', icon: Settings }
   ]
 
 
@@ -700,6 +769,7 @@ export default function Dashboard() {
               {[ 
                 { name: 'Sea Surface Height', icon: Waves, gradient: 'linear-gradient(to right, #053061, #4393c3, #f7f7f7, #d6604d, #67001f)',min: '-1', mid: '0',  max: '1 m'  },
                 { name: 'Sea Surface Temperature', icon: Thermometer, gradient: 'linear-gradient(to right, #1a1a3a, #5b326d, #c5535c, #f6a157, #fdf870)', min: '-2', mid: '14', max: '30 °C' },
+                { name: 'Surface Currents', icon: Wind, gradient: 'linear-gradient(to right, #0d0221, #0a4bc7, #17b0d4, #e8f7fd)', min: '0', mid: '1.2', max: '2.5 m/s' },
               ].map(v => {
                 const isActive = activeLayers[v.name] || false;
                 const vn = v.name;
@@ -757,10 +827,8 @@ export default function Dashboard() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}>
                             <div className="gradient-bar" style={{ 
                               flex: 1,
-                              background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps, customColor1, customColor2),
-                              marginTop: 0,
-                              WebkitMaskImage: curMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none',
-                              maskImage: curMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none'
+                              background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps, customColor1, customColor2, curMasked, varMaskOutline[vn]),
+                              marginTop: 0
                             }} />
                             <button className="icon-btn-flat"
                               style={{ flexShrink: 0, padding: 0, display: 'flex', alignItems: 'center' }}
@@ -797,7 +865,7 @@ export default function Dashboard() {
                               {baseColorMaps.slice(0, 10).map((cm, i) => (
                                 <div key={i}
                                   className={`color-swatch ${curColorMapIdx === i ? 'active' : ''}`}
-                                  style={{ background: getProcessedGradient(i, false, false, 5, customColor1, customColor2) }}
+                                  style={{ background: getProcessedGradient(i, false, false, 5, customColor1, customColor2, false, 0) }}
                                   onClick={() => setColorMapIdx(prev => ({...prev, [vn]: i}))}
                                   title={cm.label}
                                 />
@@ -805,7 +873,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="custom-color-row" onClick={e=>e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274' }}>Custom</span>
+                              <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274' }}>Steps</span>
                               <div style={{ display: 'flex', gap: '8px' }}>
                                 <input type="color" value={curCC1} onChange={e => {const val = e.target.value; setCustomColor1_ocean(prev => ({...prev, [vn]: val})); setColorMapIdx(prev => ({...prev, [vn]: 24}));}} style={{ width: '24px', height: '16px', padding: 0, border: 'none' }} />
                                 <input type="color" value={curCC2} onChange={e => {const val = e.target.value; setCustomColor2_ocean(prev => ({...prev, [vn]: val})); setColorMapIdx(prev => ({...prev, [vn]: 24}));}} style={{ width: '24px', height: '16px', padding: 0, border: 'none' }} />
@@ -819,6 +887,21 @@ export default function Dashboard() {
                                   <button className="icon-btn-flat" style={{ fontSize: '16px', fontWeight: 'bold' }} onClick={() => setVarSteps(prev => ({...prev, [vn]: Math.max(2, (prev[vn] ?? 5) - 1)}))}>−</button>
                                   <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274', width: '20px', textAlign: 'center' }}>{curSteps}</span>
                                   <button className="icon-btn-flat" style={{ fontSize: '16px', fontWeight: 'bold' }} onClick={() => setVarSteps(prev => ({...prev, [vn]: Math.min(20, (prev[vn] ?? 5) + 1)}))}>+</button>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {curMasked && (
+                              <div className="thresholds-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} onClick={e=>e.stopPropagation()}>
+                                <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274' }}>Mask outliner:</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <input type="number" min="0" max="100" step="0.1"
+                                    value={varMaskOutline[vn] ?? 1.5}
+                                    onChange={e => setVarMaskOutline(prev => ({...prev, [vn]: parseFloat(e.target.value)}))}
+                                    className="polaris-num-input"
+                                    style={{ width: '50px', background: '#f3f4f6', border: 'none', borderRadius: '4px', padding: '2px 4px', fontSize: '11px', textAlign: 'center' }}
+                                  />
+                                  <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>%</span>
                                 </div>
                               </div>
                             )}
@@ -849,8 +932,8 @@ export default function Dashboard() {
 
 
         {/* INNER PANEL: Ocean Variables */}
-        {isSidebarOpen && activeSidebar === 'Ocean' && (
-          <div className="inner-panel">
+        {/* INNER PANEL: Ocean Variables (Persisted via CSS display to keep scroll position) */}
+        <div className="inner-panel" style={{ display: isSidebarOpen && activeSidebar === 'Ocean' ? 'flex' : 'none' }}>
             <div className="panel-header">
               <div>
                 <h2 className="panel-title">Ocean Variables</h2>
@@ -859,8 +942,8 @@ export default function Dashboard() {
               <button className="close-btn" onClick={() => setActiveSidebar(null)}><X size={14} /></button>
             </div>
             
-            <div style={{ padding: '0 16px 12px 16px' }}>
-              <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '8px', marginTop: '12px' }}>
+            <div style={{ padding: '8px 16px 0px 16px', borderBottom: '1px solid #e2e8f0', marginBottom: '8px', paddingBottom: '16px' }}>
+              <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
                 <span style={{ width: '80px', fontSize: '11px', fontWeight: 600, color: '#064274' }}>Depth Slice</span>
                 <input type="range" min="-6000" max="0" step="10"
                   style={{ flex: 1, background: getSliderBg(oceanDepth + 6000, 0, 6000) }}
@@ -872,7 +955,7 @@ export default function Dashboard() {
                   }} />
                 <span style={{ width: '48px', textAlign: 'right', fontSize: '11px', fontWeight: 600, color: '#064274' }}>{oceanDepth}m</span>
               </div>
-              <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+              <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center' }}>
                 <span style={{ width: '80px', fontSize: '11px', fontWeight: 600, color: '#064274' }}>Translucency</span>
                 <input type="range" min="1" max="100" step="1"
                   style={{ flex: 1, background: getSliderBg(oceanDensity, 1, 100) }}
@@ -886,12 +969,8 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="panel-tabs primary-tabs">
-              <button className={`tab ${oceanTab === 'Physical' ? 'active' : ''}`} onClick={() => setOceanTab('Physical')}>Physical</button>
-              <button className={`tab ${oceanTab === 'Chemical' ? 'active' : ''}`} onClick={() => setOceanTab('Chemical')}>Chemical</button>
-            </div>
-            <div className="panel-content custom-scrollbar">
-              {(oceanTab === 'Physical' ? physicalVars : chemicalVars).map(v => {
+            <div className="panel-content custom-scrollbar" style={{ paddingTop: '4px' }}>
+              {oceanVars.map(v => {
                 const isActive = activeOceanVar === v.name;
                 const vn = v.name;
                 const curSettingsOpen = showVarSettings[vn] ?? true;
@@ -958,11 +1037,11 @@ export default function Dashboard() {
                                 ) : (
                                   <>
                                     {/* Tooltip MIN */}
-                                    <div style={{ position: 'absolute', left: `calc(${curClipMin}% + ${5 - curClipMin * 0.1}px)`, bottom: '100%', transform: 'translateX(-50%)', background: 'white', padding: '1px 3px', borderRadius: '3px', fontSize: '8.5px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', marginBottom: '-2px', whiteSpace: 'nowrap', zIndex: 11 }}>
+                                    <div style={{ position: 'absolute', left: `calc(${curClipMin}% + ${5 - curClipMin * 0.1}px)`, bottom: '100%', transform: 'translateX(-50%)', background: 'white', padding: '3px 6px', borderRadius: '4px', fontSize: '8.5px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', marginBottom: '-2px', whiteSpace: 'nowrap', width: 'max-content', zIndex: 11 }}>
                                       {(parseFloat(curMin) + (curClipMin / 100) * (parseFloat(curMax) - parseFloat(curMin))).toFixed(1)} {v.max.match(/[^0-9.-]+$/)?.[0]?.trim() || ''}
                                     </div>
                                     {/* Tooltip MAX */}
-                                    <div style={{ position: 'absolute', left: `calc(${curClipMax}% + ${5 - curClipMax * 0.1}px)`, bottom: '100%', transform: 'translateX(-50%)', background: 'white', padding: '1px 3px', borderRadius: '3px', fontSize: '8.5px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', marginBottom: '-2px', whiteSpace: 'nowrap', zIndex: 10 }}>
+                                    <div style={{ position: 'absolute', left: `calc(${curClipMax}% + ${5 - curClipMax * 0.1}px)`, bottom: '100%', transform: 'translateX(-50%)', background: 'white', padding: '3px 6px', borderRadius: '4px', fontSize: '8.5px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', marginBottom: '-2px', whiteSpace: 'nowrap', width: 'max-content', zIndex: 10 }}>
                                       {(parseFloat(curMin) + (curClipMax / 100) * (parseFloat(curMax) - parseFloat(curMin))).toFixed(1)} {v.max.match(/[^0-9.-]+$/)?.[0]?.trim() || ''}
                                     </div>
                                   </>
@@ -976,7 +1055,7 @@ export default function Dashboard() {
                                   left: 0, 
                                   right: 0, 
                                   height: '4px', 
-                                  background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps, curCC1, curCC2), 
+                                  background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps, curCC1, curCC2, curMasked, varMaskOutline[vn]), 
                                   borderRadius: '4px',
                                   clipPath: `inset(0 calc(100% - (${curClipMax}% + ${5 - curClipMax * 0.1}px)) 0 calc(${curClipMin}% + ${5 - curClipMin * 0.1}px))`
                                 }}></div>
@@ -992,10 +1071,8 @@ export default function Dashboard() {
                                 />
                               </div>
                               <div className="gradient-bar" style={{ 
-                                background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps, curCC1, curCC2),
-                                marginTop: 0,
-                                WebkitMaskImage: curMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none',
-                                maskImage: curMasked ? 'linear-gradient(to right, transparent 0%, transparent 1.5%, black 1.5%, black 98.5%, transparent 98.5%, transparent 100%)' : 'none'
+                                background: getProcessedGradient(curColorMapIdx, curInverted, curStepwise, curSteps, curCC1, curCC2, curMasked, varMaskOutline[vn]),
+                                marginTop: 0
                               }} />
                               <div className="gradient-labels" style={{ paddingRight: '28px', marginTop: '4px', marginBottom: '8px' }}>
                                 {(() => {
@@ -1033,7 +1110,7 @@ export default function Dashboard() {
                               {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => (
                                 <div key={i}
                                   className={`color-swatch ${curColorMapIdx === i ? 'active' : ''}`}
-                                  style={{ background: getProcessedGradient(i, false, false, 5, curCC1, curCC2) }}
+                                  style={{ background: getProcessedGradient(i, false, false, 5, curCC1, curCC2, false, 0) }}
                                   onClick={() => setColorMapIdx(prev => ({...prev, [vn]: i}))}
                                   title={baseColorMaps[i].label}
                                 />
@@ -1041,7 +1118,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="custom-color-row" onClick={e=>e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274' }}>Custom</span>
+                              <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274' }}>Steps</span>
                               <div style={{ display: 'flex', gap: '8px' }}>
                                 <input type="color" value={curCC1} onChange={e => {const val = e.target.value; setCustomColor1_ocean(prev => ({...prev, [vn]: val})); setColorMapIdx(prev => ({...prev, [vn]: 9}));}} style={{ width: '24px', height: '16px', padding: 0, border: 'none' }} />
                                 <input type="color" value={curCC2} onChange={e => {const val = e.target.value; setCustomColor2_ocean(prev => ({...prev, [vn]: val})); setColorMapIdx(prev => ({...prev, [vn]: 9}));}} style={{ width: '24px', height: '16px', padding: 0, border: 'none' }} />
@@ -1058,8 +1135,33 @@ export default function Dashboard() {
                                 </div>
                               </div>
                             )}
+                            
+                            {curMasked && (
+                              <div className="thresholds-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} onClick={e=>e.stopPropagation()}>
+                                <span style={{ fontSize: '12px', fontWeight: 600, color: '#064274' }}>Mask outliner:</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <input type="number" min="0" max="100" step="0.1"
+                                    value={varMaskOutline[vn] ?? 1.5}
+                                    onChange={e => setVarMaskOutline(prev => ({...prev, [vn]: parseFloat(e.target.value)}))}
+                                    className="polaris-num-input"
+                                    style={{ width: '50px', background: '#f3f4f6', border: 'none', borderRadius: '4px', padding: '2px 4px', fontSize: '11px', textAlign: 'center' }}
+                                  />
+                                  <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>%</span>
+                                </div>
+                              </div>
+                            )}
 
-                              {/* Min/Max input row was removed per user request */}
+                            <div className="var-limits-row" onClick={e=>e.stopPropagation()}>
+                              <div className="limit-input">
+                                <span>Min:</span>
+                                <input type="text" value={curMin} onChange={e => {const val = e.target.value; setVarMin(prev => ({...prev, [vn]: val}));}} />
+                              </div>
+                              <div className="limit-input">
+                                <span>Max:</span>
+                                <input type="text" value={curMax} onChange={e => {const val = e.target.value; setVarMax(prev => ({...prev, [vn]: val}));}} />
+                              </div>
+                              <button className="auto-btn" onClick={() => { setVarMin(prev => ({...prev, [vn]: v.min})); setVarMax(prev => ({...prev, [vn]: v.max.split(' ')[0]})); }}>Auto</button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1069,7 +1171,6 @@ export default function Dashboard() {
               })}
             </div>
           </div>
-        )}
 
         {/* INNER PANEL: Disasters */}
         {isSidebarOpen && activeSidebar === 'Disasters' && (
@@ -1122,34 +1223,169 @@ export default function Dashboard() {
             </div>
             <div className="panel-content custom-scrollbar">
               {[
-                { name: 'Argo float',          icon: Radio },
-                { name: 'Thermosalinometer',   icon: Activity },
-                { name: 'Mooring',             icon: MapIcon },
-                { name: 'Glider',              icon: Activity },
-                { name: 'CTD',                 icon: Thermometer },
-                { name: 'Drifter - SVP',       icon: Crosshair },
-                { name: 'Drifter - SVPB',      icon: Crosshair },
-                { name: 'Drifter - SVPBV',     icon: Crosshair },
-              ].map(inst => (
-                <div className={`item-card ${instruments[inst.name] ? 'active-var-card' : 'item-card-dim'}`} key={inst.name}>
-                  <div className="item-header" style={{ marginBottom: 0, cursor: 'pointer', userSelect: 'none' }} onClick={() => setInstruments(prev => ({ ...prev, [inst.name]: !prev[inst.name] }))}>
-                    <div className="item-title-group">
-                      <inst.icon size={13} className="item-icon"
-                        style={instruments[inst.name] ? { color: '#3b82f6' } : { color: '#94a3b8' }} />
-                      <span className="item-name" style={instruments[inst.name] ? { color: '#3b82f6' } : { color: '#94a3b8' }}>
-                        {inst.name}
-                      </span>
+                { name: 'Argo float',          color: '#00FFFF', type: 'cylinder' },
+                { name: 'Thermosalinometer',   color: '#FFA500', type: 'teardrop' },
+                { name: 'Mooring',             color: '#32CD32', type: 'buoy' },
+                { name: 'Glider',              color: '#FF00FF', type: 'cylinder' },
+                { name: 'CTD',                 color: '#FFFF00', type: 'teardrop' },
+                { name: 'Drifter - SVP',       color: '#FF0000', type: 'teardrop' },
+                { name: 'Drifter - SVPB',      color: '#FF0000', type: 'teardrop' },
+                { name: 'Drifter - SVPBV',     color: '#FF0000', type: 'teardrop' },
+              ].map(inst => {
+                const isActive = instruments[inst.name];
+                const fillCol = isActive ? inst.color : '#475569';
+                const strokeCol = isActive ? '#000' : '#1e293b';
+                
+                const renderIcon = () => {
+                  if (inst.type === 'cylinder') {
+                    return (
+                      <svg width="14" height="20" viewBox="0 0 24 40" style={{ marginRight: 8 }}>
+                         <rect x="6" y="10" width="12" height="20" rx="6" fill={fillCol} stroke={strokeCol} strokeWidth="2"/>
+                         <rect x="10" y="2" width="4" height="8" fill="gray" stroke={strokeCol} strokeWidth="1"/>
+                      </svg>
+                    );
+                  }
+                  if (inst.type === 'buoy') {
+                    return (
+                      <svg width="16" height="16" viewBox="0 0 30 30" style={{ marginRight: 8 }}>
+                         <path d="M5,15 L25,15 L15,25 Z" fill={fillCol} stroke={strokeCol} strokeWidth="2"/>
+                         <circle cx="15" cy="10" r="5" fill={isActive ? '#fff' : '#475569'} stroke={strokeCol} strokeWidth="2"/>
+                      </svg>
+                    );
+                  }
+                  return (
+                    <svg width="14" height="18" viewBox="0 0 24 34" style={{ marginRight: 8 }}>
+                       <path d="M12 2 C6.48 2 2 6.48 2 12 C2 19.5 12 32 12 32 C12 32 22 19.5 22 12 C22 6.48 17.52 2 12 2 Z" fill={fillCol} stroke={strokeCol} strokeWidth="2"/>
+                       <circle cx="12" cy="12" r="4" fill={isActive ? '#fff' : '#475569'}/>
+                    </svg>
+                  );
+                };
+
+                return (
+                  <div className={`item-card ${isActive ? 'active-var-card' : 'item-card-dim'}`} key={inst.name}>
+                    <div className="item-header" style={{ marginBottom: 0, cursor: 'pointer', userSelect: 'none' }} onClick={() => setInstruments(prev => ({ ...prev, [inst.name]: !isActive }))}>
+                      <div className="item-title-group" style={{ display: 'flex', alignItems: 'center' }}>
+                        {renderIcon()}
+                        <span className="item-name" style={isActive ? { color: '#064274', fontWeight: 600 } : { color: '#94a3b8', fontWeight: 600 }}>
+                          {inst.name}
+                        </span>
+                      </div>
+                      <label className="toggle-switch" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox"
+                          checked={!!isActive}
+                          onChange={e => setInstruments(prev => ({ ...prev, [inst.name]: e.target.checked }))}
+                        />
+                        <span className="toggle-track" />
+                      </label>
                     </div>
-                    <label className="toggle-switch" onClick={e => e.stopPropagation()}>
-                      <input type="checkbox"
-                        checked={instruments[inst.name]}
-                        onChange={e => setInstruments(prev => ({ ...prev, [inst.name]: e.target.checked }))}
-                      />
-                      <span className="toggle-track" />
-                    </label>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* INNER PANEL: Settings */}
+        {isSidebarOpen && activeSidebar === 'Settings' && (
+          <div className="inner-panel">
+            <div className="panel-header">
+              <div>
+                <h2 className="panel-title">System Settings</h2>
+                <p className="panel-subtitle">Configuration & Performance</p>
+              </div>
+              <button className="close-btn" onClick={() => setActiveSidebar(null)}><X size={14} /></button>
+            </div>
+            
+            <div className="panel-content custom-scrollbar" style={{ padding: '16px' }}>
+              <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+                <span style={{ width: '100px', fontSize: '11px', fontWeight: 600, color: '#064274' }}>Visual Quality</span>
+                <input type="range" min="1" max="10" step="1"
+                  style={{ flex: 1, background: getSliderBg(visualQuality, 1, 10) }}
+                  value={visualQuality}
+                  onChange={e => {
+                    const val = parseInt(e.target.value);
+                    setVisualQuality(val);
+                    if (window.setVisualQuality) window.setVisualQuality(val);
+                  }} />
+                <span style={{ width: '32px', textAlign: 'right', fontSize: '11px', fontWeight: 600, color: '#064274' }}>{visualQuality * 10}%</span>
+              </div>
+              
+              <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+                <span style={{ width: '100px', fontSize: '11px', fontWeight: 600, color: '#064274' }}>Memory Cache</span>
+                <input type="range" min="1000" max="15000" step="1000"
+                  style={{ flex: 1, background: getSliderBg(tileCacheLimit, 1000, 15000) }}
+                  value={tileCacheLimit}
+                  onChange={e => {
+                    const val = parseInt(e.target.value);
+                    setTileCacheLimit(val);
+                    if (window.setTileCacheLimit) window.setTileCacheLimit(val);
+                  }} />
+                <span style={{ width: '32px', textAlign: 'right', fontSize: '11px', fontWeight: 600, color: '#064274' }}>{tileCacheLimit}</span>
+              </div>
+
+              <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
+                <span style={{ width: '100px', fontSize: '11px', fontWeight: 600, color: '#064274' }}>Atmosphere Glow</span>
+                <input type="range" min="0" max="100" step="10"
+                  style={{ flex: 1, background: getSliderBg(atmosphereGlow, 0, 100) }}
+                  value={atmosphereGlow}
+                  onChange={e => {
+                    const val = parseInt(e.target.value);
+                    setAtmosphereGlow(val);
+                    if (window.setAtmosphereGlow) window.setAtmosphereGlow(val);
+                  }} />
+                <span style={{ width: '32px', textAlign: 'right', fontSize: '11px', fontWeight: 600, color: '#064274' }}>{atmosphereGlow}%</span>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
+                <button className="clear-cache-btn" style={{ color: '#b91c1c' }} onClick={() => {
+                  localStorage.clear();
+                  setVisualQuality(6); if (window.setVisualQuality) window.setVisualQuality(6);
+                  setTileCacheLimit(10000); if (window.setTileCacheLimit) window.setTileCacheLimit(10000);
+                  setAtmosphereGlow(10); if (window.setAtmosphereGlow) window.setAtmosphereGlow(10);
+                  
+                  setIsSunlightOn(false); if (window.toggleSunlight) window.toggleSunlight(false);
+                  setIsStarsOn(true); if (window.toggleStars) window.toggleStars(true);
+                  setIsRotating(false); if (window.toggleAutoRotate) window.toggleAutoRotate(false);
+                  setActiveMap('Bing Aerial'); if (window.changeMapLayer) window.changeMapLayer('Bing Aerial');
+                  
+                  setActiveLayers({});
+                  setBathyEnabled(false); if (window.setBathyEnabled) window.setBathyEnabled(false, 80.0);
+                  setBathyOpacity(100); if (window.setBathyOpacity) window.setBathyOpacity(100);
+                  setBathyColorMapIdx(4);
+                  setBathyInverted(false);
+                  setBathyStepwise(false);
+                  setBathySteps(5);
+                  setBathyMasked(false);
+                  setShowBathySettings(true);
+                  setVertExagg(80.0); if (window.setGlobeExaggeration) window.setGlobeExaggeration(80.0);
+                  setCrossHeight(200);
+                  
+                  setOceanTab('Physical');
+                  setActiveOceanVar(null); if (window.setOceanVariable) window.setOceanVariable(null);
+                  setShowVarSettings({});
+                  setOpacity({});
+                  setColorMapIdx({});
+                  setVarInverted({});
+                  setVarStepwise({});
+                  setVarSteps({});
+                  setVarMasked({});
+                  setVarClipMin({});
+                  setVarClipMax({});
+                  setVarMin({});
+                  setVarMax({});
+                  setCustomColor1_ocean({});
+                  setCustomColor2_ocean({});
+                  
+                  setOceanDepth(0); if (window.setOceanDepth) window.setOceanDepth(0);
+                  setOceanDensity(25); if (window.setOceanDensity) window.setOceanDensity(25);
+                  
+                  setCustomColor1('#3b82f6');
+                  setCustomColor2('#10b981');
+                  setBathyMin('-6000');
+                  setBathyMax('0');
+                }}>Reset Settings</button>
+                <button className="clear-cache-btn" onClick={() => { if (window.clearCesiumCache) window.clearCesiumCache(activeMap); }}>Clear Cache</button>
+              </div>
             </div>
           </div>
         )}

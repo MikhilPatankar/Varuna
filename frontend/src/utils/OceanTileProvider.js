@@ -24,7 +24,13 @@ export class OceanTileProvider {
         // Dynamic display bounds — changed by UI sliders, no new network requests
         this.displayVmin = options.vmin !== undefined ? options.vmin : 0;
         this.displayVmax = options.vmax !== undefined ? options.vmax : 35;
-        this.colormapName = options.colormap || 'turbo';
+        
+        this.colormapSettings = options.colormapSettings || {
+            colors: ['#000080', '#0000ff', '#00ffff', '#ffff00', '#ff0000'],
+            inverted: false,
+            stepwise: false,
+            steps: 5
+        };
         this.opacity = options.opacity !== undefined ? options.opacity : 1.0;
 
         // Pre-baked 32-bit LUT: one lookup = full RGBA pixel
@@ -34,22 +40,91 @@ export class OceanTileProvider {
     }
 
     _buildLUT() {
+        const parseHex = (hex) => {
+            const clean = hex.replace('#', '');
+            if (clean.length === 3) {
+                return [
+                    parseInt(clean[0]+clean[0], 16),
+                    parseInt(clean[1]+clean[1], 16),
+                    parseInt(clean[2]+clean[2], 16)
+                ];
+            }
+            return [
+                parseInt(clean.substring(0,2), 16),
+                parseInt(clean.substring(2,4), 16),
+                parseInt(clean.substring(4,6), 16)
+            ];
+        };
+
+        const colors = this.colormapSettings.colors || ['#000080', '#0000ff', '#00ffff', '#ffff00', '#ff0000'];
+        const c1 = parseHex(colors[0] || '#000000');
+        const c2 = parseHex(colors[1] || '#000000');
+        const c3 = parseHex(colors[2] || '#000000');
+        const c4 = parseHex(colors[3] || '#000000');
+        const c5 = parseHex(colors[4] || '#000000');
+        
+        const stepwise = this.colormapSettings.stepwise;
+        const stepsCount = this.colormapSettings.steps || 5;
+        const masked = this.colormapSettings.masked;
+        const maskOutline = this.colormapSettings.maskOutline !== undefined ? this.colormapSettings.maskOutline : 1.5;
+        
+        const maskThreshold = masked ? Math.floor((maskOutline / 2 / 100) * 256) : 0;
+
         for (let i = 0; i < 256; i++) {
-            const t = i / 255.0;
-            const r = Math.max(0, Math.min(255, Math.floor((1.5 - Math.abs(t * 4 - 3)) * 255)));
-            const g = Math.max(0, Math.min(255, Math.floor((1.5 - Math.abs(t * 4 - 2)) * 255)));
-            const b = Math.max(0, Math.min(255, Math.floor((1.5 - Math.abs(t * 4 - 1)) * 255)));
+            if (masked && (i < maskThreshold || i >= 256 - maskThreshold)) {
+                // For the masked/outlined, make it completely black
+                const a = Math.floor(255 * this.opacity);
+                this.lut32[i] = (a << 24) | (0 << 16) | (0 << 8) | 0;
+                continue;
+            }
+
+            let t = i / 255.0;
+            
+            if (stepwise) {
+                t = Math.floor(t * stepsCount) / Math.max(1, stepsCount - 1);
+                if (t > 1.0) t = 1.0;
+            }
+
+            let r, g, b;
+            if (t < 0.25) {
+                const f = t * 4.0;
+                r = c1[0] + (c2[0] - c1[0]) * f;
+                g = c1[1] + (c2[1] - c1[1]) * f;
+                b = c1[2] + (c2[2] - c1[2]) * f;
+            } else if (t < 0.5) {
+                const f = (t - 0.25) * 4.0;
+                r = c2[0] + (c3[0] - c2[0]) * f;
+                g = c2[1] + (c3[1] - c2[1]) * f;
+                b = c2[2] + (c3[2] - c2[2]) * f;
+            } else if (t < 0.75) {
+                const f = (t - 0.5) * 4.0;
+                r = c3[0] + (c4[0] - c3[0]) * f;
+                g = c3[1] + (c4[1] - c3[1]) * f;
+                b = c3[2] + (c4[2] - c3[2]) * f;
+            } else {
+                const f = (t - 0.75) * 4.0;
+                r = c4[0] + (c5[0] - c4[0]) * f;
+                g = c4[1] + (c5[1] - c4[1]) * f;
+                b = c4[2] + (c5[2] - c4[2]) * f;
+            }
+
+            r = Math.max(0, Math.min(255, Math.round(r)));
+            g = Math.max(0, Math.min(255, Math.round(g)));
+            b = Math.max(0, Math.min(255, Math.round(b)));
             const a = Math.floor(255 * this.opacity);
-            // Pack as little-endian RGBA in a Uint32
+            
             this.lut32[i] = (a << 24) | (b << 16) | (g << 8) | r;
         }
     }
 
-    updateSettings({ vmin, vmax, colormap, opacity }) {
+    updateSettings({ vmin, vmax, colormapSettings, opacity }) {
         let changed = false;
         if (vmin !== undefined && vmin !== this.displayVmin) { this.displayVmin = vmin; changed = true; }
         if (vmax !== undefined && vmax !== this.displayVmax) { this.displayVmax = vmax; changed = true; }
-        if (colormap !== undefined && this.colormapName !== colormap) { this.colormapName = colormap; changed = true; }
+        if (colormapSettings !== undefined) {
+            this.colormapSettings = colormapSettings;
+            changed = true;
+        }
         if (opacity !== undefined && opacity !== this.opacity) { this.opacity = opacity; changed = true; }
         if (changed) this._buildLUT();
         return changed;

@@ -12,7 +12,7 @@ from polaris.logger import logger
 async def lifespan(app: FastAPI):
     logger.info("PRE-LOADING ZARR DATASETS INTO RAM CACHE...")
     try:
-        con = duckdb.connect(str(DUCKDB_PATH))
+        con = duckdb.connect(str(DUCKDB_PATH), read_only=True)
         records = con.execute("SELECT dataset_name, temporal_type, time_key FROM dataset_catalog").fetchall()
         con.close()
         data.preload_datasets(records)

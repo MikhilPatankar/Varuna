@@ -27,6 +27,14 @@ class ZarrStore:
         var_ds = var_ds.chunk(chunk_cfg)
         # Write to Zarr
         var_ds.to_zarr(store_path, mode='w', consolidated=True)
+        
+        # Trigger offline tile baking automatically for the newly ingested dataset
+        from polaris.pipeline.tile_baker import bake_tiles_for_dataset
+        import logging
+        logger = logging.getLogger("polaris")
+        logger.info(f"Automatically triggering tile baking for {variable}...")
+        bake_tiles_for_dataset(variable, tier, time_key, max_zoom=3)
+        
         return store_path
 
     def read(self, variable: str, tier: str, time_key: str) -> xr.Dataset:
