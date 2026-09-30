@@ -69,11 +69,11 @@ export default function MarkModal() {
       setHoverInfo(e.detail);
     };
     const onToolChange = (e) => { if (e.detail !== 'mark') setHoverInfo(null); };
-    window.addEventListener('polaris-mark-hover', onHover);
-    window.addEventListener('polaris-tool-changed', onToolChange);
+    window.addEventListener('varuna-mark-hover', onHover);
+    window.addEventListener('varuna-tool-changed', onToolChange);
     return () => {
-      window.removeEventListener('polaris-mark-hover', onHover);
-      window.removeEventListener('polaris-tool-changed', onToolChange);
+      window.removeEventListener('varuna-mark-hover', onHover);
+      window.removeEventListener('varuna-tool-changed', onToolChange);
     };
   }, []);
 
@@ -83,7 +83,7 @@ export default function MarkModal() {
       const { lat, lon, worldPos } = e.detail;
       worldPosRef.current = new Cartesian3(worldPos.x, worldPos.y, worldPos.z);
 
-      const varKey = window.polarisActiveOceanVar || 'temperature';
+      const varKey = window.varunaActiveOceanVar || 'temperature';
       setSelectedVar(varKey);
       setClickedPoint({ lat, lon });
       setIsDepthLoading(true);
@@ -108,11 +108,11 @@ export default function MarkModal() {
       worldPosRef.current = null;
     };
 
-    window.addEventListener('polaris-mark-click', onClick);
-    window.addEventListener('polaris-mark-deselect', onDeselect);
+    window.addEventListener('varuna-mark-click', onClick);
+    window.addEventListener('varuna-mark-deselect', onDeselect);
     return () => {
-      window.removeEventListener('polaris-mark-click', onClick);
-      window.removeEventListener('polaris-mark-deselect', onDeselect);
+      window.removeEventListener('varuna-mark-click', onClick);
+      window.removeEventListener('varuna-mark-deselect', onDeselect);
     };
   }, []);
 
@@ -175,7 +175,7 @@ export default function MarkModal() {
     return () => removeListener();
   }, [clickedPoint]);
 
-  const close = () => window.dispatchEvent(new CustomEvent('polaris-mark-deselect'));
+  const close = () => window.dispatchEvent(new CustomEvent('varuna-mark-deselect'));
   const varConfig = VAR_MAP[selectedVar] || { label: selectedVar, unit: '', color: '#fff' };
 
   return (
