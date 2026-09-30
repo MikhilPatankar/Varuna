@@ -23,7 +23,7 @@ export default function BottomToolbar() {
 
   // Dispatch event whenever the tool changes so GlobeView can react
   React.useEffect(() => {
-    window.dispatchEvent(new CustomEvent('polaris-tool-changed', { detail: activeTool }));
+    window.dispatchEvent(new CustomEvent('varuna-tool-changed', { detail: activeTool }));
   }, [activeTool]);
 
   const tools = [

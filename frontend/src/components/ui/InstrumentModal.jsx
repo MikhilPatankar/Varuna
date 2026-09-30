@@ -58,13 +58,13 @@ export default function InstrumentModal() {
       currentPosRef.current = null;
     };
 
-    window.addEventListener('polaris-instrument-select', handleSelect);
-    window.dispatchEvent(new CustomEvent('polaris-instrument-select-ready'));
-    window.addEventListener('polaris-instrument-deselect', handleDeselect);
+    window.addEventListener('varuna-instrument-select', handleSelect);
+    window.dispatchEvent(new CustomEvent('varuna-instrument-select-ready'));
+    window.addEventListener('varuna-instrument-deselect', handleDeselect);
 
     return () => {
-      window.removeEventListener('polaris-instrument-select', handleSelect);
-      window.removeEventListener('polaris-instrument-deselect', handleDeselect);
+      window.removeEventListener('varuna-instrument-select', handleSelect);
+      window.removeEventListener('varuna-instrument-deselect', handleDeselect);
     };
   }, []);
 
@@ -166,7 +166,7 @@ export default function InstrumentModal() {
   }, [selectedVar, data]);
 
   const close = () => {
-    window.dispatchEvent(new CustomEvent('polaris-instrument-deselect'));
+    window.dispatchEvent(new CustomEvent('varuna-instrument-deselect'));
   };
 
   if (!data) return null;

@@ -29,7 +29,7 @@ function useLocalStorage(key, initialValue) {
       setStoredValue(valueToStore);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(key, JSON.stringify(valueToStore));
-        window.dispatchEvent(new CustomEvent('polaris-storage', {
+        window.dispatchEvent(new CustomEvent('varuna-storage', {
           detail: { key, value: valueToStore }
         }));
       }
@@ -61,20 +61,20 @@ const getDisplayLimits = (minStr, maxStr, isMasked, unit = '') => {
 
 export default function Dashboard() {
   // Inner panel is closed by default, but sidebar remains expanded
-  const [activeSidebar, setActiveSidebar] = useLocalStorage('polaris_activeSidebar', null)
-  const [isSidebarOpen, setIsSidebarOpen] = useLocalStorage('polaris_isSidebarOpen', true)
+  const [activeSidebar, setActiveSidebar] = useLocalStorage('varuna_activeSidebar', null)
+  const [isSidebarOpen, setIsSidebarOpen] = useLocalStorage('varuna_isSidebarOpen', true)
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
   const accountMenuRef = useRef(null)
   
   const [isMapMenuOpen, setIsMapMenuOpen] = useState(false)
-  const [activeMap, setActiveMap] = useLocalStorage('polaris_activeMap', 'Bing Aerial')
-  const [is3D, setIs3D] = useLocalStorage('polaris_is3D', false)
-  const [isStarsOn, setIsStarsOn] = useLocalStorage('polaris_isStarsOn', true)
-  const [isSunlightOn, setIsSunlightOn] = useLocalStorage('polaris_isSunlightOn', false)
-  const [isRotating, setIsRotating] = useLocalStorage('polaris_isRotating', false)
-  const [visualQuality, setVisualQuality] = useLocalStorage('polaris_visualQuality', 6)
-  const [tileCacheLimit, setTileCacheLimit] = useLocalStorage('polaris_tileCacheLimit', 10000)
-  const [atmosphereGlow, setAtmosphereGlow] = useLocalStorage('polaris_atmosphereGlow', 10)
+  const [activeMap, setActiveMap] = useLocalStorage('varuna_activeMap', 'Bing Aerial')
+  const [is3D, setIs3D] = useLocalStorage('varuna_is3D', false)
+  const [isStarsOn, setIsStarsOn] = useLocalStorage('varuna_isStarsOn', true)
+  const [isSunlightOn, setIsSunlightOn] = useLocalStorage('varuna_isSunlightOn', false)
+  const [isRotating, setIsRotating] = useLocalStorage('varuna_isRotating', false)
+  const [visualQuality, setVisualQuality] = useLocalStorage('varuna_visualQuality', 6)
+  const [tileCacheLimit, setTileCacheLimit] = useLocalStorage('varuna_tileCacheLimit', 10000)
+  const [atmosphereGlow, setAtmosphereGlow] = useLocalStorage('varuna_atmosphereGlow', 10)
   const mapMenuRef = useRef(null)
   const [activeModal, setActiveModal] = useState(null)
 
@@ -131,45 +131,45 @@ export default function Dashboard() {
   }, [isAccountMenuOpen, isMapMenuOpen])
 
   // ── Layer Settings State ──────────────────────────────
-  const [activeLayers, setActiveLayers] = useLocalStorage('polaris_activeLayers', {})
-  const [bathyEnabled, setBathyEnabled] = useLocalStorage('polaris_bathyEnabled', false)
-  const [bathyOpacity, setBathyOpacity] = useLocalStorage('polaris_bathyOpacity', 100)
-  const [bathyColorMapIdx, setBathyColorMapIdx] = useLocalStorage('polaris_bathyColorMapIdx', 4)
-  const [bathyInverted, setBathyInverted] = useLocalStorage('polaris_bathyInverted', false)
-  const [bathyStepwise, setBathyStepwise] = useLocalStorage('polaris_bathyStepwise', false)
-  const [bathySteps, setBathySteps] = useLocalStorage('polaris_bathySteps', 5)
-  const [bathyMasked, setBathyMasked] = useLocalStorage('polaris_bathyMasked', false)
-  const [showBathySettings, setShowBathySettings] = useLocalStorage('polaris_showBathySettings', true)
-  const [vertExagg, setVertExagg] = useLocalStorage('polaris_vertExagg', 80.0)
-  const [crossHeight, setCrossHeight] = useLocalStorage('polaris_crossHeight', 200)
+  const [activeLayers, setActiveLayers] = useLocalStorage('varuna_activeLayers', {})
+  const [bathyEnabled, setBathyEnabled] = useLocalStorage('varuna_bathyEnabled', false)
+  const [bathyOpacity, setBathyOpacity] = useLocalStorage('varuna_bathyOpacity', 100)
+  const [bathyColorMapIdx, setBathyColorMapIdx] = useLocalStorage('varuna_bathyColorMapIdx', 4)
+  const [bathyInverted, setBathyInverted] = useLocalStorage('varuna_bathyInverted', false)
+  const [bathyStepwise, setBathyStepwise] = useLocalStorage('varuna_bathyStepwise', false)
+  const [bathySteps, setBathySteps] = useLocalStorage('varuna_bathySteps', 5)
+  const [bathyMasked, setBathyMasked] = useLocalStorage('varuna_bathyMasked', false)
+  const [showBathySettings, setShowBathySettings] = useLocalStorage('varuna_showBathySettings', true)
+  const [vertExagg, setVertExagg] = useLocalStorage('varuna_vertExagg', 80.0)
+  const [crossHeight, setCrossHeight] = useLocalStorage('varuna_crossHeight', 200)
 
   // ── Ocean Variables State ─────────────────────────────
-  const [oceanTab, setOceanTab] = useLocalStorage('polaris_oceanTab', 'Physical')
-  const [activeOceanVar, setActiveOceanVar] = useLocalStorage('polaris_activeOceanVar', null)
-  const [showVarSettings, setShowVarSettings] = useLocalStorage('polaris_ocean_showVarSettings', {})
-  const [opacity, setOpacity] = useLocalStorage('polaris_ocean_opacity', {})
-  const [colorMapIdx, setColorMapIdx] = useLocalStorage('polaris_ocean_colorMapIdx', {})
-  const [varInverted, setVarInverted] = useLocalStorage('polaris_ocean_varInverted', {})
-  const [varStepwise, setVarStepwise] = useLocalStorage('polaris_ocean_varStepwise', {})
-  const [varSteps, setVarSteps] = useLocalStorage('polaris_ocean_varSteps', {})
-  const [varMasked, setVarMasked] = useLocalStorage('polaris_ocean_varMasked', {})
-  const [varMaskOutline, setVarMaskOutline] = useLocalStorage('polaris_ocean_maskOutline', {})
-  const [varClipMin, setVarClipMin] = useLocalStorage('polaris_ocean_clipMin', {})
-  const [varClipMax, setVarClipMax] = useLocalStorage('polaris_ocean_clipMax', {})
-  const [varMin, setVarMin] = useLocalStorage('polaris_ocean_varMin', {})
-  const [varMax, setVarMax] = useLocalStorage('polaris_ocean_varMax', {})
-  const [customColor1_ocean, setCustomColor1_ocean] = useLocalStorage('polaris_ocean_customColor1', {})
-  const [customColor2_ocean, setCustomColor2_ocean] = useLocalStorage('polaris_ocean_customColor2', {})
+  const [oceanTab, setOceanTab] = useLocalStorage('varuna_oceanTab', 'Physical')
+  const [activeOceanVar, setActiveOceanVar] = useLocalStorage('varuna_activeOceanVar', null)
+  const [showVarSettings, setShowVarSettings] = useLocalStorage('varuna_ocean_showVarSettings', {})
+  const [opacity, setOpacity] = useLocalStorage('varuna_ocean_opacity', {})
+  const [colorMapIdx, setColorMapIdx] = useLocalStorage('varuna_ocean_colorMapIdx', {})
+  const [varInverted, setVarInverted] = useLocalStorage('varuna_ocean_varInverted', {})
+  const [varStepwise, setVarStepwise] = useLocalStorage('varuna_ocean_varStepwise', {})
+  const [varSteps, setVarSteps] = useLocalStorage('varuna_ocean_varSteps', {})
+  const [varMasked, setVarMasked] = useLocalStorage('varuna_ocean_varMasked', {})
+  const [varMaskOutline, setVarMaskOutline] = useLocalStorage('varuna_ocean_maskOutline', {})
+  const [varClipMin, setVarClipMin] = useLocalStorage('varuna_ocean_clipMin', {})
+  const [varClipMax, setVarClipMax] = useLocalStorage('varuna_ocean_clipMax', {})
+  const [varMin, setVarMin] = useLocalStorage('varuna_ocean_varMin', {})
+  const [varMax, setVarMax] = useLocalStorage('varuna_ocean_varMax', {})
+  const [customColor1_ocean, setCustomColor1_ocean] = useLocalStorage('varuna_ocean_customColor1', {})
+  const [customColor2_ocean, setCustomColor2_ocean] = useLocalStorage('varuna_ocean_customColor2', {})
   
-  const [oceanDepth, setOceanDepth] = useLocalStorage('polaris_oceanDepth', 0)
-  const [oceanDensity, setOceanDensity] = useLocalStorage('polaris_oceanDensity', 25)
+  const [oceanDepth, setOceanDepth] = useLocalStorage('varuna_oceanDepth', 0)
+  const [oceanDensity, setOceanDensity] = useLocalStorage('varuna_oceanDensity', 25)
   
   // Shared advanced settings state (Bathymetry)
-  const [customColor1, setCustomColor1] = useLocalStorage('polaris_customColor1', '#3b82f6')
-  const [customColor2, setCustomColor2] = useLocalStorage('polaris_customColor2', '#10b981')
+  const [customColor1, setCustomColor1] = useLocalStorage('varuna_customColor1', '#3b82f6')
+  const [customColor2, setCustomColor2] = useLocalStorage('varuna_customColor2', '#10b981')
   
-  const [bathyMin, setBathyMin] = useLocalStorage('polaris_bathyMin', '-6000')
-  const [bathyMax, setBathyMax] = useLocalStorage('polaris_bathyMax', '0')
+  const [bathyMin, setBathyMin] = useLocalStorage('varuna_bathyMin', '-6000')
+  const [bathyMax, setBathyMax] = useLocalStorage('varuna_bathyMax', '0')
 
   useEffect(() => {
     if (window.setBathyEnabled) window.setBathyEnabled(bathyEnabled, vertExagg);
@@ -286,7 +286,7 @@ export default function Dashboard() {
       }
     }
     // Expose for MarkModal so it queries the correct variable
-    window.polarisActiveOceanVar = activeOceanVar || null;
+    window.varunaActiveOceanVar = activeOceanVar || null;
   }, [viewerReady, activeOceanVar, opacity, oceanDepth, oceanDensity, currentColorMapInfo, varMin, varMax, varClipMin, varClipMax, varInverted, varStepwise, varSteps, varMasked, varMaskOutline]);
 
 
@@ -383,7 +383,7 @@ export default function Dashboard() {
   }
 
   // ── Disaster State ────────────────────────────────────
-  const [disasters, setDisasters] = useLocalStorage('polaris_disasters', {
+  const [disasters, setDisasters] = useLocalStorage('varuna_disasters', {
     'Cyclone Tracking': true,
     'Oil Spillage': false,
     'Tsunami Warning': false,
@@ -393,7 +393,7 @@ export default function Dashboard() {
   })
 
   // ── Instrument State ──────────────────────────────────
-  const [instruments, setInstruments] = useLocalStorage('polaris_instruments', {
+  const [instruments, setInstruments] = useLocalStorage('varuna_instruments', {
     'Argo Floats': false, 'CTD Profilers': false,
     'Satellite Altimeters': false, 'Moored Buoys': false,
     'Gliders': false, 'Drifters': false,
@@ -428,7 +428,7 @@ export default function Dashboard() {
       <div className="top-left-panel">
         <div className="brand">
           <span className="brand-dot" />
-          <span className="brand-text">POLARIS</span>
+          <span className="brand-text">VARUNA</span>
         </div>
         
         <div className="toolbar">
@@ -441,7 +441,7 @@ export default function Dashboard() {
                 viewer.render(); // Force a synchronous WebGL frame buffer render
                 const dataUrl = viewer.canvas.toDataURL('image/png');
                 const link = document.createElement('a');
-                link.download = `Polaris_Capture_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.png`;
+                link.download = `Varuna_Capture_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.png`;
                 link.href = dataUrl;
                 link.click();
               }
@@ -1432,54 +1432,77 @@ export default function Dashboard() {
       {activeModal && (
         <div className="modal-overlay" onClick={(e) => { if (e.target.classList.contains('modal-overlay')) setActiveModal(null) }}>
           {activeModal === 'info' && (
-            <div className="polaris-modal info-modal">
+            <div className="varuna-modal info-modal">
               <div className="modal-header">
-                <h3>Polaris</h3>
+                <h3>Varuna</h3>
                 <button className="close-btn" onClick={() => setActiveModal(null)}><X size={16} /></button>
               </div>
               <div className="modal-content custom-scrollbar">
                 <p>
-                  Polaris brings together live orbital telemetry, analytical tools, and immersive visualization into a single place. We work closely with industry partners to ensure the underlying physics models, ephemeris data, and rendering technology are accurate enough for real-world operations.
+                  Varuna is a 3D ocean digital twin built for the web. It takes complex ocean data like temperature, currents, and sea floor depth and makes it easy to explore in real-time. By streaming compressed data directly to your browser, Varuna lets you look beneath the ocean's surface to understand physical changes at any depth.
                 </p>
                 <div className="tech-partners">
                   <h4>Technology Partners</h4>
-                  <div className="partner-logos">
-                    <div className="partner-box">
-                      <Database size={16} color="#4ade80" />
+                  <div className="partner-logos" style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                    <div className="partner-box" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontWeight: 800, fontSize: '11px', color: '#183A58', letterSpacing: '0.5px' }}>Cesium</span>
                     </div>
-                    <div className="partner-box">
-                      <Activity size={16} color="#3b82f6" />
+                    <div className="partner-box" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <svg width="14" height="14" viewBox="0 0 110 110" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M54.1 11.2c-21.7 0-20.9 9.4-20.9 9.4l.2 9.8h21.4v3H33s-9.7-1.3-9.7 13.9c0 15.2 8.5 14.6 8.5 14.6h6v-8.5s-.2-9.9 9.9-9.9h22s9.4.2 9.4-9.3v-13s.8-10-15-10z" fill="#387EB8"/><path d="M55.4 98.7c21.7 0 20.9-9.4 20.9-9.4l-.2-9.8H54.7v-3h21.8s9.7 1.3 9.7-13.9c0-15.2-8.5-14.6-8.5-14.6h-6v8.5s.2 9.9-9.9 9.9h-22s-9.4-.2-9.4 9.3v13s-.8 10 15 10z" fill="#FFE052"/></svg>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#0f172a' }}>Python</span>
+                    </div>
+                    <div className="partner-box" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <svg width="14" height="14" viewBox="-10.5 -9.45 21 18.9" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: "#61dafb" }}><circle cx="0" cy="0" r="2" fill="currentColor"></circle><g stroke="currentColor" strokeWidth="1" fill="none"><ellipse rx="10" ry="4.5"></ellipse><ellipse rx="10" ry="4.5" transform="rotate(60)"></ellipse><ellipse rx="10" ry="4.5" transform="rotate(120)"></ellipse></g></svg>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#0f172a' }}>React</span>
                     </div>
                   </div>
                 </div>
-                <div className="modal-actions">
-                  <button>Attributions</button>
-                  <button>Third Party Licenses</button>
-                  <button>Feedback</button>
+                <div className="modal-actions" style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                  <button onClick={() => setActiveModal('database')}>Attributions</button>
+                  <button onClick={() => window.open('https://youtube.com', '_blank')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg> YouTube Video
+                  </button>
                 </div>
               </div>
             </div>
           )}
 
           {activeModal === 'changelog' && (
-            <div className="polaris-modal changelog-modal">
+            <div className="varuna-modal changelog-modal">
               <div className="modal-header">
                 <h3>Changelog</h3>
                 <button className="close-btn" onClick={() => setActiveModal(null)}><X size={16} /></button>
               </div>
               <div className="modal-content custom-scrollbar">
                 <div className="changelog-version">
-                  <h4>[0.1.0]</h4>
+                  <h4>[0.2.0]</h4>
                   <h5>Added</h5>
                   <ul>
-                    <li>Viewer session names to browser tab</li>
-                    <li>Timeline now displays an object's events</li>
-                    <li>Visibility time intervals available for satellites</li>
-                    <li>Covariance ellipsoids can be rendered from ephemeris data</li>
+                    <li>Dynamic Timeline Player for temporal animations</li>
+                    <li>Dropdown for time periods (Month, Year, Decade) with precise seek steps</li>
+                    <li>Sleek, frosted-glass design for the timeline interface</li>
+                  </ul>
+                  <h5>Changed</h5>
+                  <ul>
+                    <li>Rebranded entirely from POLARIS to VARUNA across all UI layers</li>
                   </ul>
                   <h5>Fixed</h5>
                   <ul>
-                    <li>Cameras in the <code>INERTIAL</code> frame would not have their states loaded correctly</li>
+                    <li>Resolved overflow clipping issues on the Instrument dropdown menus</li>
+                    <li>Fixed hover crosshair tooltip tooltip styles to match the modal theme</li>
+                  </ul>
+                </div>
+                <div className="changelog-version">
+                  <h4>[0.1.0]</h4>
+                  <h5>Added</h5>
+                  <ul>
+                    <li>Raw Binary Data API returning Float32Array chunks for 3D volumetric rendering</li>
+                    <li>Client-side colormapping and volume rendering via WebGL</li>
+                    <li>Universal Parser Engine for Argo and NetCDF sources</li>
+                  </ul>
+                  <h5>Fixed</h5>
+                  <ul>
+                    <li>Cameras rendering below the bathymetry mesh would not have their states loaded correctly</li>
                   </ul>
                 </div>
                 <div className="changelog-version">
@@ -1488,37 +1511,11 @@ export default function Dashboard() {
                   <ul>
                     <li>High-performance Cesium WebGL rendering engine integration</li>
                     <li>HUD compass with 60fps real-time math synchronization</li>
-                    <li>Dynamic geometric horizon mapping for pitch constraints</li>
-                  </ul>
-                </div>
-                <div className="changelog-version">
-                  <h4>[0.0.8]</h4>
-                  <h5>Added</h5>
-                  <ul>
                     <li>Dynamic sidebars with frosted glassmorphism</li>
-                    <li>Tooltips for navigation icons</li>
-                    <li>Initial layout for Objects, Satellites, and Stations</li>
                   </ul>
                   <h5>Changed</h5>
                   <ul>
                     <li>Switched default map view to Bing Aerial</li>
-                    <li>Updated system font to Inter for improved legibility</li>
-                  </ul>
-                </div>
-                <div className="changelog-version">
-                  <h4>[0.0.7]</h4>
-                  <h5>Fixed</h5>
-                  <ul>
-                    <li>Bug where 2D/3D toggle would fly the camera into deep space</li>
-                    <li>Resolved CSS pointer-events blocking clicks on overlay modals</li>
-                  </ul>
-                </div>
-                <div className="changelog-version">
-                  <h4>[0.0.6]</h4>
-                  <h5>Added</h5>
-                  <ul>
-                    <li>Bottom footer with dynamic camera telemetry (Alt, Heading, Pitch)</li>
-                    <li>Data attribution links for CMEMS, Argo GDAC, and NOAA</li>
                   </ul>
                 </div>
               </div>
@@ -1526,14 +1523,14 @@ export default function Dashboard() {
           )}
 
           {activeModal === 'database' && (
-            <div className="polaris-modal database-modal">
+            <div className="varuna-modal database-modal">
               <div className="modal-header">
                 <h3>Data Sources</h3>
                 <button className="close-btn" onClick={() => setActiveModal(null)}><X size={16} /></button>
               </div>
               <div className="modal-content custom-scrollbar">
                 <p>
-                  Polaris aggregates live orbital telemetry, oceanic models, and atmospheric data from the following verified providers:
+                  Varuna aggregates multi-scale oceanic models, physical profiles, and spatial data from the following verified providers:
                 </p>
                 <div className="data-source-list">
                   <div className="data-source-item">

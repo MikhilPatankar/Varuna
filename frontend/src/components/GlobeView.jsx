@@ -61,9 +61,9 @@ export default function GlobeView() {
       };
       const variable = variableMap[varName] || 'temperature';
 
-      const savedDepthStr = localStorage.getItem('polaris_oceanDepth');
+      const savedDepthStr = localStorage.getItem('varuna_oceanDepth');
       const oceanDepth = savedDepthStr ? parseInt(JSON.parse(savedDepthStr)) : 0;
-      const savedExaggStr = localStorage.getItem('polaris_vertExagg');
+      const savedExaggStr = localStorage.getItem('varuna_vertExagg');
       const vertExagg = savedExaggStr ? parseInt(JSON.parse(savedExaggStr)) : 80;
 
       const config = { 
@@ -249,7 +249,7 @@ export default function GlobeView() {
       // After 5 seconds, unleash the GPU and crank all settings to maximum!
       // After 5 seconds, unleash the GPU and crank all settings to maximum (if user hasn't overridden)!
       setTimeout(() => {
-        if (!isActive() || window.polarisHasCustomLOD) return
+        if (!isActive() || window.varunaHasCustomLOD) return
         globe.maximumScreenSpaceError = 0.45
         globe.preloadSiblings = true
         globe.loadingDescendantLimit = 200
@@ -276,7 +276,7 @@ export default function GlobeView() {
       
       window.setVisualQuality = (val) => {
         if (!viewerRef.current) return;
-        window.polarisHasCustomLOD = true;
+        window.varunaHasCustomLOD = true;
         
         // Exponential scale: 1 -> 5.0 (Fast), 10 -> 0.05 (Extreme Quality)
         // 5.0 * 10^(-(val - 1) / 4.5)
@@ -295,8 +295,8 @@ export default function GlobeView() {
         viewerRef.current.scene.globe.tileCacheSize = val;
       };
 
-      window.polarisSunlightEnabled = false;
-      window.polarisAtmosphereGlow = 10;
+      window.varunaSunlightEnabled = false;
+      window.varunaAtmosphereGlow = 10;
 
       window.updateAtmosphereAndSunlight = async () => {
         if (!viewerRef.current) return;
@@ -306,8 +306,8 @@ export default function GlobeView() {
         if (!viewerRef.current) return;
         const scene = viewerRef.current.scene;
         const globe = scene.globe;
-        const enableSun = window.polarisSunlightEnabled;
-        const glow = window.polarisAtmosphereGlow;
+        const enableSun = window.varunaSunlightEnabled;
+        const glow = window.varunaAtmosphereGlow;
 
         // 1. Lighting & Shadows
         globe.enableLighting = enableSun;
@@ -339,7 +339,7 @@ export default function GlobeView() {
       };
 
       window.setAtmosphereGlow = (val) => {
-        window.polarisAtmosphereGlow = val;
+        window.varunaAtmosphereGlow = val;
         window.updateAtmosphereAndSunlight();
       };
 
@@ -522,15 +522,15 @@ export default function GlobeView() {
           
           coordsText.textContent = `${toDMS(latDeg, true)} ${toDMS(lonDeg, false)}`
 
-          if (window.polarisActiveTool === 'mark') {
-            window.dispatchEvent(new CustomEvent('polaris-mark-hover', { 
+          if (window.varunaActiveTool === 'mark') {
+            window.dispatchEvent(new CustomEvent('varuna-mark-hover', { 
               detail: { lat: latDeg, lon: lonDeg, x: movement.endPosition.x, y: movement.endPosition.y } 
             }));
           }
         } else {
           coordsText.textContent = `Deep Space`
-          if (window.polarisActiveTool === 'mark') {
-            window.dispatchEvent(new CustomEvent('polaris-mark-hover', { detail: null }));
+          if (window.varunaActiveTool === 'mark') {
+            window.dispatchEvent(new CustomEvent('varuna-mark-hover', { detail: null }));
           }
         }
       }, ScreenSpaceEventType.MOUSE_MOVE)
@@ -555,7 +555,7 @@ export default function GlobeView() {
       ]
 
       // ── TOOLBAR INTERACTION MODES ────────────────────────────
-      window.polarisActiveTool = 'select';
+      window.varunaActiveTool = 'select';
 
       // Store Cesium's default event type arrays so we can restore them
       const defaultRotate   = [CameraEventType.LEFT_DRAG];
@@ -563,9 +563,9 @@ export default function GlobeView() {
       const defaultTilt     = [CameraEventType.RIGHT_DRAG, CameraEventType.MIDDLE_DRAG];
       const defaultLook     = null; // disabled by default
 
-      window.addEventListener('polaris-tool-changed', (e) => {
+      window.addEventListener('varuna-tool-changed', (e) => {
         const tool = e.detail;
-        window.polarisActiveTool = tool;
+        window.varunaActiveTool = tool;
         if (!viewerRef.current) return;
         const scc = viewerRef.current.scene.screenSpaceCameraController;
         
@@ -754,7 +754,7 @@ export default function GlobeView() {
       // Sunlight & Shadows API
       // Sunlight & Shadows API
       window.toggleSunlight = (enable) => {
-        window.polarisSunlightEnabled = enable;
+        window.varunaSunlightEnabled = enable;
         if (window.updateAtmosphereAndSunlight) {
            window.updateAtmosphereAndSunlight();
         }
@@ -817,7 +817,7 @@ export default function GlobeView() {
     
     const updateVisibility = () => {
       instrumentsDataSource.entities.removeAll();
-      const stored = localStorage.getItem('polaris_instruments');
+      const stored = localStorage.getItem('varuna_instruments');
       const toggles = stored ? JSON.parse(stored) : {};
       
       const typeMap = {
@@ -900,11 +900,11 @@ export default function GlobeView() {
     fetchInstruments();
     
     const handleStorageEvent = (e) => {
-      if (e.detail && e.detail.key === 'polaris_instruments') {
+      if (e.detail && e.detail.key === 'varuna_instruments') {
         updateVisibility();
       }
     };
-    window.addEventListener('polaris-storage', handleStorageEvent);
+    window.addEventListener('varuna-storage', handleStorageEvent);
     
     // Add Path Data Source
     const pathDataSource = new CustomDataSource('instrumentPath');
@@ -914,13 +914,13 @@ export default function GlobeView() {
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
     handler.setInputAction((click) => {
       // Check if 'mark' tool is active
-      if (window.polarisActiveTool === 'mark') {
+      if (window.varunaActiveTool === 'mark') {
         const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
         if (cartesian) {
           const carto = viewer.scene.globe.ellipsoid.cartesianToCartographic(cartesian);
           const lat = CesiumMath.toDegrees(carto.latitude);
           const lon = CesiumMath.toDegrees(carto.longitude);
-          window.dispatchEvent(new CustomEvent('polaris-mark-click', { detail: { lat, lon, position: click.position, worldPos: cartesian } }));
+          window.dispatchEvent(new CustomEvent('varuna-mark-click', { detail: { lat, lon, position: click.position, worldPos: cartesian } }));
         }
         return;
       }
@@ -932,7 +932,7 @@ export default function GlobeView() {
         console.log("Clicked instrument:", instId);
         
         // Dispatch event for UI Modal to listen to
-        window.dispatchEvent(new CustomEvent('polaris-instrument-select', { detail: instId }));
+        window.dispatchEvent(new CustomEvent('varuna-instrument-select', { detail: instId }));
 
         // Dim other instruments
         instrumentsDataSource.entities.values.forEach(e => {
@@ -951,7 +951,7 @@ export default function GlobeView() {
           .then(res => res.json())
           .then(data => {
             // Dispatch event for UI Modal to listen to, passing the rich data
-            window.dispatchEvent(new CustomEvent('polaris-instrument-select', { detail: data }));
+            window.dispatchEvent(new CustomEvent('varuna-instrument-select', { detail: data }));
             
             if (!data.profiles || data.profiles.length === 0) return;
             
@@ -1002,7 +1002,7 @@ export default function GlobeView() {
           
       } else {
         // Clicked off an instrument, reset
-        window.dispatchEvent(new CustomEvent('polaris-instrument-deselect'));
+        window.dispatchEvent(new CustomEvent('varuna-instrument-deselect'));
         pathDataSource.entities.removeAll();
         instrumentsDataSource.entities.values.forEach(e => {
           e.billboard.color = Color.WHITE;
@@ -1012,7 +1012,7 @@ export default function GlobeView() {
     }, ScreenSpaceEventType.LEFT_CLICK);
     
     return () => {
-      window.removeEventListener('polaris-storage', handleStorageEvent);
+      window.removeEventListener('varuna-storage', handleStorageEvent);
       viewer.dataSources.remove(instrumentsDataSource);
       viewer.dataSources.remove(pathDataSource);
       handler.destroy();
@@ -1167,7 +1167,7 @@ export default function GlobeView() {
         
         <div className="hud-bottom-bar">
           <div className="hud-footer-left">
-            <span className="hud-brand">Polaris</span>
+            <span className="hud-brand">Varuna</span>
             <span 
               className="hud-attribution" 
               data-tooltip="Sources: CMEMS, Argo GDAC, IBTrACS, NOAA"
