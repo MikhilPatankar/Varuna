@@ -1,6 +1,7 @@
 import GlobeView from './components/GlobeView'
 import Dashboard from './components/ui/Dashboard'
 import InstrumentModal from './components/ui/InstrumentModal'
+import MarkModal from './components/ui/MarkModal'
 import './styles/global.css'
 
 export default function App() {
@@ -9,6 +10,7 @@ export default function App() {
       <GlobeView />
       <Dashboard />
       <InstrumentModal />
+      <MarkModal />
     </div>
   )
 }

@@ -9,6 +9,7 @@ import {
   ArrowRightLeft, MoveHorizontal, Baseline, Columns, AlignLeft, BarChart2
 } from 'lucide-react'
 import './Dashboard.css'
+import BottomToolbar from './BottomToolbar'
 
 function useLocalStorage(key, initialValue) {
   const [storedValue, setStoredValue] = useState(() => {
@@ -284,6 +285,8 @@ export default function Dashboard() {
         window.setOceanVariable('Temperature', false); // The variable name doesn't matter if isActive is false
       }
     }
+    // Expose for MarkModal so it queries the correct variable
+    window.polarisActiveOceanVar = activeOceanVar || null;
   }, [viewerReady, activeOceanVar, opacity, oceanDepth, oceanDensity, currentColorMapInfo, varMin, varMax, varClipMin, varClipMax, varInverted, varStepwise, varSteps, varMasked, varMaskOutline]);
 
 
@@ -462,8 +465,6 @@ export default function Dashboard() {
             <Info size={14} />
           </button>
         </div>
-
-        <div className="badge">BETA v0.1</div>
       </div>
 
       {/* TOP CENTER: Navigation Tools */}
@@ -1424,6 +1425,9 @@ export default function Dashboard() {
         </div>
 
       </div>
+
+      <BottomToolbar />
+
       {/* MODALS */}
       {activeModal && (
         <div className="modal-overlay" onClick={(e) => { if (e.target.classList.contains('modal-overlay')) setActiveModal(null) }}>

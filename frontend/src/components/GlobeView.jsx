@@ -515,14 +515,23 @@ export default function GlobeView() {
             const s = ((minFloat - m) * 60).toFixed(2)
             const dir = isLat ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W')
             
-            // Pad degrees: Lat gets 2 digits, Lon gets 3 digits. We use '0' to keep width identical.
+          // Pad degrees: Lat gets 2 digits, Lon gets 3 digits. We use '0' to keep width identical.
             const padDeg = isLat ? 2 : 3
             return `${d.toString().padStart(padDeg, '0')}°${m.toString().padStart(2, '0')}'${s.padStart(5, '0')}"${dir}`
           }
           
           coordsText.textContent = `${toDMS(latDeg, true)} ${toDMS(lonDeg, false)}`
+
+          if (window.polarisActiveTool === 'mark') {
+            window.dispatchEvent(new CustomEvent('polaris-mark-hover', { 
+              detail: { lat: latDeg, lon: lonDeg, x: movement.endPosition.x, y: movement.endPosition.y } 
+            }));
+          }
         } else {
           coordsText.textContent = `Deep Space`
+          if (window.polarisActiveTool === 'mark') {
+            window.dispatchEvent(new CustomEvent('polaris-mark-hover', { detail: null }));
+          }
         }
       }, ScreenSpaceEventType.MOUSE_MOVE)
 
@@ -544,6 +553,45 @@ export default function GlobeView() {
         CameraEventType.RIGHT_DRAG, 
         CameraEventType.MIDDLE_DRAG
       ]
+
+      // ── TOOLBAR INTERACTION MODES ────────────────────────────
+      window.polarisActiveTool = 'select';
+
+      // Store Cesium's default event type arrays so we can restore them
+      const defaultRotate   = [CameraEventType.LEFT_DRAG];
+      const defaultTranslate = [CameraEventType.RIGHT_DRAG];
+      const defaultTilt     = [CameraEventType.RIGHT_DRAG, CameraEventType.MIDDLE_DRAG];
+      const defaultLook     = null; // disabled by default
+
+      window.addEventListener('polaris-tool-changed', (e) => {
+        const tool = e.detail;
+        window.polarisActiveTool = tool;
+        if (!viewerRef.current) return;
+        const scc = viewerRef.current.scene.screenSpaceCameraController;
+        
+        if (tool === 'pan') {
+          // LEFT_DRAG pans; disable rotate and tilt entirely so nothing fights the pan
+          scc.rotateEventTypes   = null;
+          scc.tiltEventTypes     = null;
+          scc.translateEventTypes = CameraEventType.LEFT_DRAG;
+          scc.lookEventTypes     = null;
+          viewerRef.current.canvas.style.cursor = 'grab';
+        } else if (tool === 'rotate') {
+          // LEFT_DRAG rotates; disable translate so globe spins in place
+          scc.rotateEventTypes   = [CameraEventType.LEFT_DRAG];
+          scc.tiltEventTypes     = [CameraEventType.RIGHT_DRAG, CameraEventType.MIDDLE_DRAG];
+          scc.translateEventTypes = null;
+          scc.lookEventTypes     = null;
+          viewerRef.current.canvas.style.cursor = 'all-scroll';
+        } else {
+          // Default (select / mark / box) – restore Cesium defaults
+          scc.rotateEventTypes   = defaultRotate;
+          scc.translateEventTypes = defaultTranslate;
+          scc.tiltEventTypes     = defaultTilt;
+          scc.lookEventTypes     = defaultLook;
+          viewerRef.current.canvas.style.cursor = (tool === 'mark' || tool === 'box') ? 'crosshair' : 'default';
+        }
+      });
 
       // --- SMART ZOOM HARDWARE DETECTION ---
       // Dynamically swaps the zoom speed depending on whether you used a mouse or a trackpad.
@@ -865,6 +913,18 @@ export default function GlobeView() {
     // Add Click Handler for Instruments
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
     handler.setInputAction((click) => {
+      // Check if 'mark' tool is active
+      if (window.polarisActiveTool === 'mark') {
+        const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+        if (cartesian) {
+          const carto = viewer.scene.globe.ellipsoid.cartesianToCartographic(cartesian);
+          const lat = CesiumMath.toDegrees(carto.latitude);
+          const lon = CesiumMath.toDegrees(carto.longitude);
+          window.dispatchEvent(new CustomEvent('polaris-mark-click', { detail: { lat, lon, position: click.position, worldPos: cartesian } }));
+        }
+        return;
+      }
+
       const pickedObject = viewer.scene.pick(click.position);
       if (CesiumMath && pickedObject && pickedObject.id && pickedObject.id.properties?.isInstrument) {
         const inst = pickedObject.id.properties;

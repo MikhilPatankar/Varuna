@@ -51,6 +51,22 @@ def get_cached_dataset(variable: str, tier: str, time_key: str):
         _DATASET_CACHE[key] = xr.open_zarr(str(zarr_path), consolidated=True).load()
     return _DATASET_CACHE[key]
 
+@router.get("/{variable}/{tier}/latest_key")
+def get_latest_time_key(variable: str, tier: str):
+    """Return the most recent time_key (zarr folder name) available for a variable+tier."""
+    tier_path = Path(ZARR_ROOT) / variable / tier
+    if not tier_path.exists():
+        return Response(status_code=404, content=f"No data found for {variable}/{tier}")
+    
+    keys = sorted([
+        p.stem for p in tier_path.iterdir()
+        if p.is_dir() and p.suffix == ".zarr"
+    ])
+    if not keys:
+        return Response(status_code=404, content="No datasets found")
+    
+    return {"time_key": keys[-1]}
+
 @router.get("/{variable}/{tier}/{time_key}")
 def get_volume_chunk(
     variable: str,
