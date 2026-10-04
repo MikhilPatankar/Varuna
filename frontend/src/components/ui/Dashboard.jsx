@@ -6,7 +6,7 @@ import {
   User, Box, Satellite, Radio, Folder, FileEdit, Clock, Activity, Calendar,
   Search, X, List, RefreshCw, Plus, ChevronLeft, ChevronRight,
   Waves, AlertTriangle, Radar, Droplet, Eye, Settings2, ToggleLeft, ToggleRight, Download, Thermometer, Droplets, Wind, Flame, Crosshair, Siren,
-  ArrowRightLeft, MoveHorizontal, Baseline, Columns, AlignLeft, BarChart2
+  ArrowRightLeft, MoveHorizontal, Baseline, Columns, AlignLeft, BarChart2, Trash2
 } from 'lucide-react'
 import './Dashboard.css'
 import BottomToolbar from './BottomToolbar'
@@ -384,13 +384,19 @@ export default function Dashboard() {
 
   // ── Disaster State ────────────────────────────────────
   const [disasters, setDisasters] = useLocalStorage('varuna_disasters', {
-    'Cyclone Tracking': true,
+    'Cyclone Tracking': false,
     'Oil Spillage': false,
     'Tsunami Warning': false,
     'Fishing Zone': false,
     'Dead Zone': false,
     'Marine Heatwave': false,
   })
+
+  // ── Anomaly State ────────────────────────────────────
+  const [anomalyVars, setAnomalyVars] = useLocalStorage('varuna_anomaly', {
+    'Temperature': false,
+  })
+  const [anomalyYears, setAnomalyYears] = useLocalStorage('varuna_anomalyYears', 5)
 
   // ── Instrument State ──────────────────────────────────
   const [instruments, setInstruments] = useLocalStorage('varuna_instruments', {
@@ -415,6 +421,7 @@ export default function Dashboard() {
   const sidebarItems = [
     { name: 'Layers', icon: Layers },
     { name: 'Ocean', icon: Waves },
+    { name: 'Anomaly', icon: Activity },
     { name: 'Disasters', icon: Siren },
     { name: 'Sensors', icon: Radar },
     { name: 'Settings', icon: Settings }
@@ -910,11 +917,11 @@ export default function Dashboard() {
                             <div className="var-limits-row" onClick={e=>e.stopPropagation()}>
                               <div className="limit-input">
                                 <span>Min:</span>
-                                <input type="text" value={curMin} onChange={e => {const val = e.target.value; setVarMin(prev => ({...prev, [vn]: val}));}} />
+                                <input type="text" value={curMin ?? ''} onChange={e => {const val = e.target.value; setVarMin(prev => ({...prev, [vn]: val}));}} />
                               </div>
                               <div className="limit-input">
                                 <span>Max:</span>
-                                <input type="text" value={curMax} onChange={e => {const val = e.target.value; setVarMax(prev => ({...prev, [vn]: val}));}} />
+                                <input type="text" value={curMax ?? ''} onChange={e => {const val = e.target.value; setVarMax(prev => ({...prev, [vn]: val}));}} />
                               </div>
                               <button className="auto-btn" onClick={() => { setVarMin(prev => ({...prev, [vn]: v.min})); setVarMax(prev => ({...prev, [vn]: v.max.split(' ')[0]})); }}>Auto</button>
                             </div>
@@ -1155,11 +1162,11 @@ export default function Dashboard() {
                             <div className="var-limits-row" onClick={e=>e.stopPropagation()}>
                               <div className="limit-input">
                                 <span>Min:</span>
-                                <input type="text" value={curMin} onChange={e => {const val = e.target.value; setVarMin(prev => ({...prev, [vn]: val}));}} />
+                                <input type="text" value={curMin ?? ''} onChange={e => {const val = e.target.value; setVarMin(prev => ({...prev, [vn]: val}));}} />
                               </div>
                               <div className="limit-input">
                                 <span>Max:</span>
-                                <input type="text" value={curMax} onChange={e => {const val = e.target.value; setVarMax(prev => ({...prev, [vn]: val}));}} />
+                                <input type="text" value={curMax ?? ''} onChange={e => {const val = e.target.value; setVarMax(prev => ({...prev, [vn]: val}));}} />
                               </div>
                               <button className="auto-btn" onClick={() => { setVarMin(prev => ({...prev, [vn]: v.min})); setVarMax(prev => ({...prev, [vn]: v.max.split(' ')[0]})); }}>Auto</button>
                             </div>
@@ -1172,6 +1179,145 @@ export default function Dashboard() {
               })}
             </div>
           </div>
+
+        {/* INNER PANEL: Anomaly */}
+        {isSidebarOpen && activeSidebar === 'Anomaly' && (
+          <div className="inner-panel">
+            <div className="panel-header">
+              <div>
+                <h2 className="panel-title">Data Anomaly</h2>
+                <p className="panel-subtitle">Compare current state with historical averages</p>
+              </div>
+              <button className="close-btn" onClick={() => setActiveSidebar(null)}><X size={14} /></button>
+            </div>
+            
+            {/* Baseline years dropdown removed */}
+            <div className="panel-content custom-scrollbar">
+              {[
+                { name: 'Temperature', icon: Thermometer, color: '#ef4444' },
+                { name: 'Ocean Plastics', icon: Trash2, color: '#ec4899' }
+              ].map(item => (
+                <div className={`item-card ${anomalyVars[item.name] ? 'active-var-card' : 'item-card-dim'}`} key={item.name}>
+                  <div className="item-header" style={{ marginBottom: anomalyVars[item.name] ? '12px' : 0, cursor: 'pointer', userSelect: 'none' }} 
+                       onClick={() => {
+                         const n = !anomalyVars[item.name];
+                         setAnomalyVars(prev => ({ ...prev, [item.name]: n }));
+                         if (window.set2DLayer) {
+                           window.set2DLayer(item.name + ' Anomaly', n, { 
+                             years: anomalyYears,
+                             vmin: varMin[`${item.name} Anomaly`] ?? (item.name === 'Ocean Plastics' ? 0 : -5),
+                             vmax: varMax[`${item.name} Anomaly`] ?? (item.name === 'Ocean Plastics' ? 10 : 5)
+                           });
+                         }
+                       }}>
+                    <div className="item-title-group">
+                      <item.icon size={13} color={anomalyVars[item.name] ? item.color : '#94a3b8'} className="item-icon" />
+                      <span className="item-name" style={anomalyVars[item.name] ? { color: '#064274', fontWeight: 600 } : { color: '#94a3b8' }}>{item.name}</span>
+                    </div>
+                    <label className="toggle-switch" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox"
+                        checked={anomalyVars[item.name]}
+                        onChange={e => {
+                          const n = e.target.checked;
+                          setAnomalyVars(prev => ({ ...prev, [item.name]: n }));
+                          if (window.set2DLayer) {
+                            window.set2DLayer(item.name + ' Anomaly', n, { 
+                              years: anomalyYears,
+                              vmin: varMin[`${item.name} Anomaly`] ?? (item.name === 'Ocean Plastics' ? 0 : -5),
+                              vmax: varMax[`${item.name} Anomaly`] ?? (item.name === 'Ocean Plastics' ? 10 : 5)
+                            });
+                          }
+                        }}
+                      />
+                      <span className="toggle-track" />
+                    </label>
+                  </div>
+                  {anomalyVars[item.name] && (
+                    <div className="layer-card-body" style={{ padding: '0 12px 12px 12px' }}>
+                      {item.name !== 'Ocean Plastics' && (
+                        <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                          <span style={{ width: '80px', fontSize: '11px', fontWeight: 600, color: '#064274' }}>Baseline</span>
+                          <input type="range" min="1" max="10" step="1"
+                            style={{ flex: 1, background: getSliderBg(anomalyYears, 1, 10) }}
+                            value={anomalyYears}
+                            onChange={e => {
+                              const val = parseInt(e.target.value);
+                              setAnomalyYears(val);
+                              if (window.set2DLayer) {
+                                window.set2DLayer(item.name + ' Anomaly', true, { 
+                                  years: val,
+                                  vmin: varMin[`${item.name} Anomaly`] ?? (item.name === 'Ocean Plastics' ? 0 : -5),
+                                  vmax: varMax[`${item.name} Anomaly`] ?? (item.name === 'Ocean Plastics' ? 10 : 5)
+                                });
+                              }
+                            }} />
+                          <span style={{ width: '45px', textAlign: 'right', fontSize: '11px', fontWeight: 600, color: '#064274' }}>{anomalyYears} yrs</span>
+                        </div>
+                      )}
+                      <div className="var-settings-row" style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                        <span style={{ width: '80px', fontSize: '11px', fontWeight: 600, color: '#064274' }}>Opacity</span>
+                        <input type="range" min="0" max="100"
+                          style={{ flex: 1, background: getSliderBg(opacity[`${item.name} Anomaly`] ?? 100, 0, 100) }}
+                          value={opacity[`${item.name} Anomaly`] ?? 100}
+                          onChange={e => {
+                            const val = parseInt(e.target.value);
+                            setOpacity(prev => ({ ...prev, [`${item.name} Anomaly`]: val }));
+                            if (window.active2DLayers && window.active2DLayers[`${item.name} Anomaly`]) {
+                              window.active2DLayers[`${item.name} Anomaly`].alpha = val / 100.0;
+                              if (window.cesiumViewer) window.cesiumViewer.scene.requestRender();
+                            }
+                          }} />
+                        <span style={{ width: '36px', textAlign: 'right', fontSize: '11px', fontWeight: 600, color: '#064274' }}>{opacity[`${item.name} Anomaly`] ?? 100}%</span>
+                      </div>
+                      
+                      {item.name !== 'Ocean Plastics' && (
+                        <>
+                          <div className="gradient-bar" style={{ 
+                            background: 'linear-gradient(to right, #053061, #2166ac, #4393c3, #92c5de, #d1e5f0, #ffffff, #fddbc7, #f4a582, #d6604d, #b2182b, #67001f)',
+                            marginTop: '12px'
+                          }} />
+                          <div className="gradient-labels" style={{ marginTop: '4px', marginBottom: '8px' }}>
+                            <span>{varMin[`${item.name} Anomaly`] ?? -5}°C</span>
+                            <span>0°C</span>
+                            <span>{varMax[`${item.name} Anomaly`] ?? 5}°C</span>
+                          </div>
+                          
+                          <div className="var-limits-row" onClick={e=>e.stopPropagation()}>
+                            <div className="limit-input">
+                              <span>Min:</span>
+                              <input type="text" value={varMin[`${item.name} Anomaly`] ?? -5} 
+                                onChange={e => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setVarMin(prev => ({ ...prev, [`${item.name} Anomaly`]: val }));
+                                  if (window.set2DLayer) window.set2DLayer(item.name + ' Anomaly', true, { years: anomalyYears, vmin: val, vmax: varMax[`${item.name} Anomaly`] ?? 5 });
+                                }} 
+                              />
+                            </div>
+                            <div className="limit-input">
+                              <span>Max:</span>
+                              <input type="text" value={varMax[`${item.name} Anomaly`] ?? 5} 
+                                onChange={e => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setVarMax(prev => ({ ...prev, [`${item.name} Anomaly`]: val }));
+                                  if (window.set2DLayer) window.set2DLayer(item.name + ' Anomaly', true, { years: anomalyYears, vmin: varMin[`${item.name} Anomaly`] ?? -5, vmax: val });
+                                }} 
+                              />
+                            </div>
+                            <button className="auto-btn" onClick={() => { 
+                              setVarMin(prev => ({...prev, [`${item.name} Anomaly`]: -5})); 
+                              setVarMax(prev => ({...prev, [`${item.name} Anomaly`]: 5})); 
+                              if (window.set2DLayer) window.set2DLayer(item.name + ' Anomaly', true, { years: anomalyYears, vmin: -5, vmax: 5 });
+                            }}>Auto</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* INNER PANEL: Disasters */}
         {isSidebarOpen && activeSidebar === 'Disasters' && (
@@ -1187,7 +1333,7 @@ export default function Dashboard() {
               {[
                 { name: 'Fishing Zone',      icon: Crosshair,     color: '#f59e0b' },
                 { name: 'Dead Zone',         icon: Box,           color: '#8b5cf6' },
-                { name: 'Cyclone',           icon: AlertTriangle, color: '#ef4444' },
+                { name: 'Cyclone Tracking',           icon: AlertTriangle, color: '#ef4444' },
                 { name: 'Tsunami',           icon: Waves,         color: '#3b82f6' },
                 { name: 'Oil Spillage',      icon: Droplet,       color: '#10b981' },
                 { name: 'Marine Heatwave',   icon: Flame,         color: '#ef4444' },
@@ -1439,7 +1585,7 @@ export default function Dashboard() {
               </div>
               <div className="modal-content custom-scrollbar">
                 <p>
-                  Varuna is a 3D ocean digital twin built for the web. It takes complex ocean data like temperature, currents, and sea floor depth and makes it easy to explore in real-time. By streaming compressed data directly to your browser, Varuna lets you look beneath the ocean's surface to understand physical changes at any depth.
+                  Varuna is a 3D digital ocean mdoel built for the web. It takes complex ocean data like temperature, currents, and sea floor depth and makes it easy to explore in real-time. By streaming compressed data directly to your browser, Varuna lets you look beneath the ocean's surface to understand physical changes at any depth.
                 </p>
                 <div className="tech-partners">
                   <h4>Technology Partners</h4>

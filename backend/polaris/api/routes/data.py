@@ -52,9 +52,10 @@ def get_cached_dataset(variable: str, tier: str, time_key: str):
     return _DATASET_CACHE[key]
 
 @router.get("/{variable}/{tier}/latest_key")
-def get_latest_time_key(variable: str, tier: str):
+def get_latest_time_key(variable: str, tier: str, years: int = Query(5)):
     """Return the most recent time_key (zarr folder name) available for a variable+tier."""
     tier_path = Path(ZARR_ROOT) / variable / tier
+            
     if not tier_path.exists():
         return Response(status_code=404, content=f"No data found for {variable}/{tier}")
     
@@ -140,6 +141,67 @@ def get_volume_chunk(
             ),
         },
     )
+
+@router.get("/currents/daily/{time_key}/vector_json")
+async def get_currents_vector_json(
+    time_key: str,
+    stride: int = Query(6, ge=1, description="Downsample stride to prevent massive JSON payloads")
+):
+    """Return JSON vector field formatted for cesium-wind, containing u and v surface currents."""
+    import json
+    import numpy as np
+    ds_u = get_cached_dataset("u_current", "daily", time_key)
+    ds_v = get_cached_dataset("v_current", "daily", time_key)
+    if ds_u is None or ds_v is None:
+        return Response(status_code=404, content="Data not found")
+        
+    ds_u = ds_u.isel(time=-1).sel(depth=0, method='nearest')
+    ds_v = ds_v.isel(time=-1).sel(depth=0, method='nearest')
+    
+    ds_u = ds_u.isel(lat=slice(None, None, stride), lon=slice(None, None, stride))
+    ds_v = ds_v.isel(lat=slice(None, None, stride), lon=slice(None, None, stride))
+    
+    lats = ds_u.lat.values
+    lons = ds_u.lon.values
+    
+    # cesium-wind expects latitudes from top (90) to bottom (-90)
+    if lats[0] < lats[-1]:
+        lats = lats[::-1]
+        u_vals = ds_u['u_current'].values[::-1, :]
+        v_vals = ds_v['v_current'].values[::-1, :]
+    else:
+        u_vals = ds_u['u_current'].values
+        v_vals = ds_v['v_current'].values
+        
+    la1, la2 = float(lats[0]), float(lats[-1])
+    lo1, lo2 = float(lons[0]), float(lons[-1])
+    dx = float((lo2 - lo1) / (len(lons) - 1)) if len(lons)>1 else 1.0
+    dy = float(abs(la1 - la2) / (len(lats) - 1)) if len(lats)>1 else 1.0
+
+    u_data = np.where(np.isnan(u_vals), 0.0, u_vals)
+    v_data = np.where(np.isnan(v_vals), 0.0, v_vals)
+    
+    output = [
+        {
+            'header': {
+                'parameterCategory': 2, 'parameterNumber': 2,
+                'nx': len(lons), 'ny': len(lats),
+                'lo1': lo1, 'lo2': lo2, 'la1': la1, 'la2': la2,
+                'dx': dx, 'dy': dy
+            },
+            'data': u_data.flatten().tolist()
+        },
+        {
+            'header': {
+                'parameterCategory': 2, 'parameterNumber': 3,
+                'nx': len(lons), 'ny': len(lats),
+                'lo1': lo1, 'lo2': lo2, 'la1': la1, 'la2': la2,
+                'dx': dx, 'dy': dy
+            },
+            'data': v_data.flatten().tolist()
+        }
+    ]
+    return Response(content=json.dumps(output), media_type="application/json")
 
 @router.get("/{variable}/{tier}/{time_key}/slice")
 async def get_depth_slice(
@@ -376,15 +438,18 @@ def get_float_tile(
     lat_step = (lat_max - lat_min) / 256.0
     lon_centers = np.linspace(lon_min + lon_step/2, lon_max - lon_step/2, 256)
 
-    ds_lon_min = float(np.nanmin(ds.lon.values))
-    ds_lon_max_val = float(np.nanmax(ds.lon.values))
+    lat_name = 'latitude' if 'latitude' in ds.dims else 'lat'
+    lon_name = 'longitude' if 'longitude' in ds.dims else 'lon'
+
+    ds_lon_min = float(np.nanmin(ds[lon_name].values))
+    ds_lon_max_val = float(np.nanmax(ds[lon_name].values))
     lon_centers = np.clip(lon_centers, ds_lon_min, ds_lon_max_val)
     lat_centers = np.linspace(lat_min + lat_step/2, lat_max - lat_step/2, 256)
 
-    lat_indices = np.abs(ds.lat.values[:, None] - lat_centers).argmin(axis=0)
-    lon_indices = np.abs(ds.lon.values[:, None] - lon_centers).argmin(axis=0)
+    lat_indices = np.abs(ds[lat_name].values[:, None] - lat_centers).argmin(axis=0)
+    lon_indices = np.abs(ds[lon_name].values[:, None] - lon_centers).argmin(axis=0)
 
-    data = ds[variable].isel(lat=lat_indices, lon=lon_indices)
+    data = ds[variable].isel({lat_name: lat_indices, lon_name: lon_indices})
     values = data.values.astype(np.float32)
 
     is_3d = ('depth' in ds.dims) and (depth is None)

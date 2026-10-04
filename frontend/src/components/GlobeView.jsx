@@ -1,4 +1,6 @@
+// Force Vite HMR reload
 import { useEffect, useRef, useState } from 'react'
+import cycloneIcon from '../assets/cyclone.png'
 import {
   Viewer,
   createWorldTerrainAsync,
@@ -20,11 +22,14 @@ import {
   NearFarScalar,
   VerticalOrigin,
   PolylineDashMaterialProperty,
+  PolylineGlowMaterialProperty,
+  ClassificationType,
 } from 'cesium'
 import { Navigation, Plus, Minus, X } from 'lucide-react'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { OceanTileProvider } from '../utils/OceanTileProvider'
 import VolumetricOcean from './VolumetricOcean'
+import CesiumWind from "cesium-wind"
 import './GlobeView.css'
 
 // ─── Main Globe Component ─────────────────────────────────────────────────────
@@ -43,7 +48,7 @@ export default function GlobeView() {
   // VolumetricOcean re-renders correctly once the async viewer is ready.
   if (typeof window !== 'undefined') {
     window.activeOceanLayer = null;
-    window.setOceanVariable = (varName, isActive, options = {}) => {
+    window.setOceanVariable = async (varName, isActive, options = {}) => {
       console.log(`[VOL-API] setOceanVariable varName=${varName} isActive=${isActive}`);
 
       if (!isActive) {
@@ -53,13 +58,23 @@ export default function GlobeView() {
         return;
       }
 
-      const timeKey = '2026-09-21';
       const variableMap = {
         'Temperature': 'temperature', 'Sea Surface Temperature': 'temperature',
         'Salinity': 'salinity', 'Currents': 'currents', 'Chlorophyll': 'chlorophyll',
-        'Oxygen': 'oxygen', 'Nitrate': 'nitrate', 'Phosphate': 'phosphate', 'Silicate': 'silicate'
+        'Oxygen': 'dissolved_oxygen', 'Nitrate': 'nitrate', 'Phosphate': 'phosphate', 'Silicate': 'silicate'
       };
       const variable = variableMap[varName] || 'temperature';
+
+      let timeKey = new Date().toISOString().split('T')[0]; // Fallback to today
+      try {
+        const res = await fetch(`http://localhost:8000/api/v1/data/${variable}/daily/latest_key`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.time_key) timeKey = data.time_key;
+        }
+      } catch (e) {
+        console.error(`Failed to fetch latest time key for ${variable}`, e);
+      }
 
       const savedDepthStr = localStorage.getItem('varuna_oceanDepth');
       const oceanDepth = savedDepthStr ? parseInt(JSON.parse(savedDepthStr)) : 0;
@@ -95,14 +110,21 @@ export default function GlobeView() {
       const variableMap = {
         'Sea Surface Temperature': 'temperature',
         'Sea Surface Height': 'ssh',
-        'Surface Currents': 'currents'
+        'Surface Currents': 'currents',
+        'Temperature Anomaly': 'anomaly_temperature',
+        'Ocean Plastics Anomaly': 'plastics'
       };
       const variable = variableMap[varName];
       if (!variable) return;
 
       if (window.active2DLayers[varName]) {
         if (!isActive) {
-          viewer.scene.imageryLayers.remove(window.active2DLayers[varName]);
+          const oldLyr = window.active2DLayers[varName];
+          if (oldLyr.remove) {
+             oldLyr.remove();
+          } else {
+             viewer.scene.imageryLayers.remove(oldLyr);
+          }
           delete window.active2DLayers[varName];
           viewer.scene.requestRender();
           return;
@@ -110,8 +132,86 @@ export default function GlobeView() {
       }
 
       if (isActive) {
-        const timeKey = '2026-09-21';
-        let urlTemplate = `http://localhost:8000/api/v1/data/${variable}/daily/${timeKey}/tile/{z}/{x}/{y}?depth=0`;
+        let timeKey = new Date().toISOString().split('T')[0]; // Fallback to today
+        let checkVar = variable === 'currents' ? 'u_current' : variable;
+        
+        // Append years to anomaly_temperature variable name
+        if (variable === 'anomaly_temperature') {
+          checkVar = `anomaly_temperature_${options.years || 5}`;
+        }
+        
+        try {
+          let fetchUrl = `http://localhost:8000/api/v1/data/${checkVar}/daily/latest_key`;
+          const res = await fetch(fetchUrl);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.time_key) timeKey = data.time_key;
+          }
+        } catch (e) {
+          console.error(`Failed to fetch latest time key for ${variable}`, e);
+        }
+
+        if (varName === 'Surface Currents' || varName === 'Ocean Plastics Anomaly') {
+          let reqVar = 'currents';
+          // we use the currents vector json for both
+          try {
+             fetch(`http://localhost:8000/api/v1/data/currents/daily/${timeKey}/vector_json`)
+               .then(res => res.json())
+               .then(data => {
+                  let windOptions = {};
+                  if (varName === 'Surface Currents') {
+                    windOptions = {
+                      colorScale: [
+                        "rgb(36,104, 180)", "rgb(60,157, 194)", "rgb(128,205,193 )",
+                        "rgb(151,218,168 )", "rgb(198,231,181)", "rgb(238,247,217)",
+                        "rgb(255,238,159)", "rgb(252,217,125)", "rgb(255,182,100)",
+                        "rgb(252,150,75)", "rgb(250,112,52)", "rgb(245,64,32)",
+                        "rgb(237,45,28)", "rgb(220,24,32)", "rgb(180,0,35)"
+                      ],
+                      frameRate: 16,
+                      maxAge: 120,
+                      globalAlpha: options.opacity !== undefined ? options.opacity : 0.9,
+                      velocityScale: 1 / 15,
+                      paths: 4000
+                    };
+                  } else {
+                    // Ocean Plastics Anomaly Particle Drift
+                    windOptions = {
+                      colorScale: [
+                        "rgba(255, 255, 255, 0.3)", 
+                        "rgba(255, 255, 255, 0.6)", 
+                        "rgba(236, 72, 153, 0.8)",
+                        "rgba(219, 39, 119, 1.0)",
+                        "rgba(157, 23, 77, 1.0)"
+                      ],
+                      frameRate: 20,
+                      maxAge: 300, // Very long life to simulate accumulation
+                      globalAlpha: options.opacity !== undefined ? options.opacity : 1.0,
+                      velocityScale: 1 / 25, // Slow drift
+                      paths: 18000, // Dense plastic count
+                      lineWidth: 2.5
+                    };
+                  }
+                  const windLayer = new CesiumWind(data, { windOptions });
+                  windLayer.addTo(viewer);
+                  
+                  const oldLayer = window.active2DLayers[varName];
+                  window.active2DLayers[varName] = windLayer;
+                  if (oldLayer) {
+                     if (oldLayer.remove) oldLayer.remove();
+                     else viewer.scene.imageryLayers.remove(oldLayer);
+                  }
+               });
+          } catch(e) {
+             console.error('Failed to load currents layer', e);
+          }
+          return;
+        }
+
+        if (varName === 'Ocean Plastics Anomaly') return; // Handled above as particles
+
+        let fetchVar = variable === 'anomaly_temperature' ? `anomaly_temperature_${options.years || 5}` : variable;
+        let urlTemplate = `http://localhost:8000/api/v1/data/${fetchVar}/daily/${timeKey}/tile/{z}/{x}/{y}?depth=0`;
 
         try {
           const provider = new OceanTileProvider({
@@ -195,6 +295,8 @@ export default function GlobeView() {
       const viewer = new Viewer(containerRef.current, {
         terrainProvider,
         baseLayerPicker:         false,
+        baseLayer:               false,
+        imageryProvider:         false,
         geocoder:                false,
         homeButton:              false,
         sceneModePicker:         false,
@@ -534,6 +636,22 @@ export default function GlobeView() {
           }
         }
       }, ScreenSpaceEventType.MOUSE_MOVE)
+
+      // FIX FOR CESIUM-WIND SYNCHRONIZATION DURING ZOOM/PAN
+      camera.moveStart.addEventListener(() => {
+        const windLayer = window.active2DLayers && window.active2DLayers['Surface Currents'];
+        if (windLayer && windLayer.wind) {
+          windLayer.wind.stop();
+          if (windLayer.wind.clearCanvas) windLayer.wind.clearCanvas();
+        }
+      });
+      
+      camera.moveEnd.addEventListener(() => {
+        const windLayer = window.active2DLayers && window.active2DLayers['Surface Currents'];
+        if (windLayer && windLayer.wind) {
+          windLayer.wind.start();
+        }
+      });
 
       // Interaction tuning
       scene.screenSpaceCameraController.inertiaSpin      = 0.94
@@ -1000,9 +1118,37 @@ export default function GlobeView() {
           })
           .catch(err => console.error("Failed to fetch profile for path", err));
           
+      } else if (CesiumMath && pickedObject && pickedObject.id && pickedObject.id.properties?.isDisaster) {
+        const dist = pickedObject.id.properties;
+        const type = dist.disasterType?.getValue();
+        
+        if (type === 'Cyclone Tracking') {
+           const sid = dist.cyclone_id?.getValue();
+           fetch(`http://localhost:8000/api/v1/hazards/cyclone/${sid}`)
+             .then(res => res.json())
+             .then(data => {
+                window.dispatchEvent(new CustomEvent('varuna-disaster-select', { detail: { ...data, hazardType: 'Cyclone Tracking' } }));
+             })
+             .catch(err => console.error("Failed to fetch cyclone details", err));
+        } else {
+           window.dispatchEvent(new CustomEvent('varuna-disaster-select', { 
+             detail: { 
+               hazardType: type,
+               event_id: dist.event_id?.getValue(),
+               name: dist.name?.getValue(),
+               severity: dist.severity?.getValue(),
+               start_time: dist.start_time?.getValue(),
+               end_time: dist.end_time?.getValue(),
+               source: dist.source?.getValue(),
+               lat: dist.lat?.getValue(),
+               lon: dist.lon?.getValue()
+             }
+           }));
+        }
       } else {
-        // Clicked off an instrument, reset
+        // Clicked off an instrument or disaster, reset
         window.dispatchEvent(new CustomEvent('varuna-instrument-deselect'));
+        window.dispatchEvent(new CustomEvent('varuna-disaster-deselect'));
         pathDataSource.entities.removeAll();
         instrumentsDataSource.entities.values.forEach(e => {
           e.billboard.color = Color.WHITE;
@@ -1016,6 +1162,372 @@ export default function GlobeView() {
       viewer.dataSources.remove(instrumentsDataSource);
       viewer.dataSources.remove(pathDataSource);
       handler.destroy();
+    };
+  }, [viewerReady]);
+
+  // ── FETCH AND MANAGE DISASTERS ──────────────────────────────────────────
+  useEffect(() => {
+    if (!viewerReady) return;
+    const viewer = viewerRef.current;
+    
+    const disastersDataSource = new CustomDataSource('disasters');
+    viewer.dataSources.add(disastersDataSource);
+    
+    // Cache to avoid refetching
+    const loadedDisasters = {};
+    const loadedTracks = {};
+    let updateGen = 0;
+    
+    const updateDisasters = async () => {
+      const currentGen = ++updateGen;
+      disastersDataSource.entities.removeAll();
+      const stored = localStorage.getItem('varuna_disasters');
+      const toggles = stored ? JSON.parse(stored) : {};
+      
+      const typeMap = {
+        'Cyclone Tracking': { api: 'cyclones', isHazard: false, color: '#ef4444' },
+        'Oil Spillage': { api: 'oil_spill', isHazard: true, color: '#333333' },
+        'Tsunami Warning': { api: 'tsunami', isHazard: true, color: '#3b82f6' },
+        'Fishing Zone': { api: 'fishing_spot', isHazard: true, color: '#10b981' },
+        'Dead Zone': { api: 'dead_zone', isHazard: true, color: '#6b7280' },
+        'Marine Heatwave': { api: 'marine_heatwave', isHazard: true, color: '#f59e0b' }
+      };
+      
+      for (const [key, isActive] of Object.entries(toggles)) {
+        if (!isActive) continue;
+        const conf = typeMap[key];
+        if (!conf) continue;
+        
+        let data = loadedDisasters[key];
+        if (!data) {
+          try {
+            if (conf.isHazard) {
+              const res = await fetch(`http://localhost:8000/api/v1/hazards/${conf.api}`);
+              const json = await res.json();
+              let fetchedData = json.data || [];
+              
+              // Filter out hazards older than 7 days
+              const sevenDaysAgo = new Date();
+              sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+              
+              data = fetchedData.filter(item => {
+                if (!item.start_time) return true;
+                const start = new Date(item.start_time);
+                const end = item.end_time ? new Date(item.end_time) : start;
+                return start >= sevenDaysAgo || end >= sevenDaysAgo;
+              });
+              
+            } else if (conf.api === 'cyclones') {
+              const res = await fetch(`http://localhost:8000/api/v1/hazards/cyclones?active_only=true`);
+              const json = await res.json();
+              data = json.data || [];
+            }
+            if (currentGen !== updateGen) return;
+            loadedDisasters[key] = data;
+          } catch (e) {
+            console.error("Failed to fetch disaster", key, e);
+            continue;
+          }
+        }
+
+        // ── Helper: category color from wind speed (Saffir-Simpson) ─────────
+        const categoryColor = (windKts) => {
+          const w = parseFloat(windKts) || 0;
+          if (w >= 137) return Color.fromCssColorString('#7B1E1E'); // Cat 5
+          if (w >= 113) return Color.fromCssColorString('#C0392B'); // Cat 4
+          if (w >= 96)  return Color.fromCssColorString('#E67E22'); // Cat 3
+          if (w >= 83)  return Color.fromCssColorString('#F1C40F'); // Cat 2
+          if (w >= 64)  return Color.fromCssColorString('#27AE60'); // Cat 1
+          if (w >= 34)  return Color.fromCssColorString('#95A5A6'); // Tropical Storm
+          return Color.fromCssColorString('#BDC3C7');               // Tropical Depression
+        };
+
+        // ── Cyclone: draw full track instead of single icon ─────────────────
+        if (key === 'Cyclone Tracking') {
+          for (const item of data) {
+            const sid = item.cyclone_id;
+            if (!sid) continue;
+            let trackData = loadedTracks[sid];
+            if (!trackData) {
+              try {
+                const r = await fetch(`http://localhost:8000/api/v1/hazards/cyclone/${sid}`);
+                trackData = await r.json();
+                loadedTracks[sid] = trackData;
+              } catch (err) {
+                console.error("Failed to fetch cyclone track", sid, err);
+                continue;
+              }
+              if (currentGen !== updateGen) return;
+            }
+            const positions = trackData.positions || [];
+            if (positions.length === 0) continue;
+
+            // Per-segment colored polylines
+            for (let i = 0; i < positions.length - 1; i++) {
+              const p0 = positions[i];
+              const p1 = positions[i + 1];
+              if (!p0.lat || !p1.lat) continue;
+              const segColor = categoryColor(p0.wind_kts);
+              const segWidth = Math.max(3, Math.min(10, (parseFloat(p0.wind_kts) || 30) / 15));
+              // Core line
+              disastersDataSource.entities.add({
+                polyline: {
+                  positions: [
+                    Cartesian3.fromDegrees(parseFloat(p0.lon), parseFloat(p0.lat), 500),
+                    Cartesian3.fromDegrees(parseFloat(p1.lon), parseFloat(p1.lat), 500),
+                  ],
+                  width: segWidth,
+                  material: segColor.withAlpha(0.95),
+                  clampToGround: false,
+                }
+              });
+              // Outer glow halo
+              disastersDataSource.entities.add({
+                polyline: {
+                  positions: [
+                    Cartesian3.fromDegrees(parseFloat(p0.lon), parseFloat(p0.lat), 400),
+                    Cartesian3.fromDegrees(parseFloat(p1.lon), parseFloat(p1.lat), 400),
+                  ],
+                  width: segWidth + 8,
+                  material: segColor.withAlpha(0.18),
+                  clampToGround: false,
+                }
+              });
+            }
+
+            // Observation dots (every other point)
+            positions.forEach((p, idx) => {
+              if (!p.lat || !p.lon) return;
+              if (idx % 2 !== 0 && idx !== positions.length - 1) return;
+              const dotColor = categoryColor(p.wind_kts);
+              const isHead = idx === positions.length - 1;
+              disastersDataSource.entities.add({
+                position: Cartesian3.fromDegrees(parseFloat(p.lon), parseFloat(p.lat), 600),
+                point: {
+                  pixelSize: isHead ? 10 : 5,
+                  color: dotColor,
+                  outlineColor: Color.WHITE.withAlpha(0.85),
+                  outlineWidth: 1.5,
+                  heightReference: HeightReference.NONE,
+                  scaleByDistance: new NearFarScalar(1.0e5, 1.2, 8.0e6, 0.4),
+                },
+              });
+            });
+
+            // Draw the wind radii swath along the entire track
+            const parseCoords = (coordStr) => coordStr.split(',').map(parseFloat);
+            positions.forEach((p, idx) => {
+              const pLat = parseFloat(p.lat);
+              const pLon = parseFloat(p.lon);
+              const pWind = parseFloat(p.wind_kts) || 35;
+              
+              if (p.wind_radii) {
+                if (p.wind_radii['34kt_polygon']) {
+                  disastersDataSource.entities.add({
+                    polygon: {
+                      hierarchy: Cartesian3.fromDegreesArray(parseCoords(p.wind_radii['34kt_polygon'])),
+                      height: 10 + (idx * 50),
+                      material: Color.fromCssColorString('#27AE60').withAlpha(0.15),
+                      outline: false,
+                    }
+                  });
+                }
+                if (p.wind_radii['50kt_polygon']) {
+                  disastersDataSource.entities.add({
+                    polygon: {
+                      hierarchy: Cartesian3.fromDegreesArray(parseCoords(p.wind_radii['50kt_polygon'])),
+                      height: 10 + (idx * 50) + 10,
+                      material: Color.fromCssColorString('#E67E22').withAlpha(0.2),
+                      outline: false,
+                    }
+                  });
+                }
+                if (p.wind_radii['64kt_polygon']) {
+                  disastersDataSource.entities.add({
+                    polygon: {
+                      hierarchy: Cartesian3.fromDegreesArray(parseCoords(p.wind_radii['64kt_polygon'])),
+                      height: 10 + (idx * 50) + 20,
+                      material: Color.fromCssColorString('#C0392B').withAlpha(0.25),
+                      outline: false,
+                    }
+                  });
+                }
+              } else {
+                // Fallback approximation
+                const scale = Math.max(0.4, Math.min(2.0, pWind / 65));
+                const r64 = 60000  * scale;
+                const r50 = 130000 * scale;
+                const r34 = 280000 * scale;
+  
+                disastersDataSource.entities.add({
+                  position: Cartesian3.fromDegrees(pLon, pLat, 0),
+                  ellipse: {
+                    semiMajorAxis: r34, semiMinorAxis: r34 * 0.85,
+                    height: 10 + (idx * 50),
+                    material: Color.fromCssColorString('#27AE60').withAlpha(0.05),
+                    outline: false,
+                  }
+                });
+                if (pWind >= 50) {
+                  disastersDataSource.entities.add({
+                    position: Cartesian3.fromDegrees(pLon, pLat, 0),
+                    ellipse: {
+                      semiMajorAxis: r50, semiMinorAxis: r50 * 0.85,
+                      height: 10 + (idx * 50) + 10,
+                      material: Color.fromCssColorString('#E67E22').withAlpha(0.1),
+                      outline: false,
+                    }
+                  });
+                }
+                if (pWind >= 64) {
+                  disastersDataSource.entities.add({
+                    position: Cartesian3.fromDegrees(pLon, pLat, 0),
+                    ellipse: {
+                      semiMajorAxis: r64, semiMinorAxis: r64 * 0.85,
+                      height: 10 + (idx * 50) + 20,
+                      material: Color.fromCssColorString('#C0392B').withAlpha(0.15),
+                      outline: false,
+                    }
+                  });
+                }
+              }
+            });
+
+            // Current-position head icon & label
+            const cur = trackData.current_position || (positions.length > 0 ? positions[positions.length - 1] : null);
+            if (cur && cur.lat && cur.lon) {
+              const curLat = parseFloat(cur.lat);
+              const curLon = parseFloat(cur.lon);
+
+              // Head icon
+              disastersDataSource.entities.add({
+                id: 'disaster_' + sid,
+                position: Cartesian3.fromDegrees(curLon, curLat, 3000),
+                billboard: {
+                  image: cycloneIcon,
+                  heightReference: HeightReference.RELATIVE_TO_GROUND,
+                  sizeInMeters: true,
+                  width: 60000,
+                  height: 60000,
+                  verticalOrigin: VerticalOrigin.BOTTOM,
+                  scaleByDistance: new NearFarScalar(1.0e5, 1.2, 1.0e7, 0.6),
+                },
+                label: {
+                  text: (trackData.name || 'UNKNOWN').toUpperCase(),
+                  font: 'bold 16px sans-serif',
+                  fillColor: Color.WHITE,
+                  outlineColor: Color.BLACK,
+                  outlineWidth: 3,
+                  style: 2, // LabelStyle.FILL_AND_OUTLINE
+                  pixelOffset: { x: 0, y: -45 },
+                  heightReference: HeightReference.RELATIVE_TO_GROUND,
+                  scaleByDistance: new NearFarScalar(1.0e5, 1.2, 8.0e6, 0.0),
+                },
+                properties: {
+                  isDisaster: true,
+                  disasterType: 'Cyclone Tracking',
+                  cyclone_id: sid,
+                  name: trackData.name,
+                  basin: trackData.basin,
+                  current_position: cur,
+                }
+              });
+            }
+          }
+          // Skip generic icon rendering below for cyclones
+          continue;
+        }
+
+        // ── Generic Hazard Icons (non-cyclone) ──────────────────────────────
+        const createDisasterIcon = (type, colorHex) => {
+          if (type === 'Cyclone Tracking') return cycloneIcon;
+          
+          let innerSvg = '';
+          if (type === 'Oil Spillage') {
+            innerSvg = `
+              <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+            `;
+            return 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="${colorHex}" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${innerSvg}</svg>`);
+          } else if (type === 'Tsunami Warning') {
+            innerSvg = `
+              <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>
+              <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>
+              <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>
+            `;
+            return 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${colorHex}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${innerSvg}</svg>`);
+          } else if (type === 'Fishing Zone') {
+            innerSvg = `
+              <path d="M6.5 12c.94-3.46 4.94-6 8.5-6 3.56 0 6.06 2.54 7 6-.94 3.46-3.44 6-7 6s-7.56-2.54-8.5-6Z"/>
+              <path d="M18 12v.01"/>
+              <path d="M6.5 12L2 9v6l4.5-3Z"/>
+            `;
+            return 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${colorHex}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${innerSvg}</svg>`);
+          } else if (type === 'Marine Heatwave') {
+            innerSvg = `
+              <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/>
+              <path d="M12 7v7"/>
+            `;
+            return 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="${colorHex}" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${innerSvg}</svg>`);
+          } else {
+            innerSvg = `
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            `;
+            return 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="${colorHex}" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${innerSvg}</svg>`);
+          }
+        };
+
+        data.forEach(item => {
+          let lat, lon, id;
+          if (conf.isHazard) {
+            lat = item.lat;
+            lon = item.lon;
+            id = item.event_id;
+          } else {
+            if (!item.current_position) return;
+            lat = item.current_position.lat;
+            lon = item.current_position.lon;
+            id = item.cyclone_id;
+          }
+          if (lat === undefined || lon === undefined || lat === '' || lon === '') return;
+
+          const iconUrl = createDisasterIcon(key, conf.color);
+          
+          disastersDataSource.entities.add({
+            id: 'disaster_' + id,
+            position: Cartesian3.fromDegrees(parseFloat(lon), parseFloat(lat), 3000), // higher than instruments
+            billboard: {
+              image: iconUrl,
+              heightReference: HeightReference.RELATIVE_TO_GROUND,
+              sizeInMeters: true,
+              width: 50000,
+              height: 50000,
+              verticalOrigin: VerticalOrigin.BOTTOM,
+            },
+            properties: {
+              isDisaster: true,
+              disasterType: key,
+              ...item
+            }
+          });
+        });
+      }
+      if (viewerRef.current) viewerRef.current.scene.requestRender();
+    };
+    
+    updateDisasters();
+    
+    const handleStorageEvent = (e) => {
+      if (e.detail && e.detail.key === 'varuna_disasters') {
+        updateDisasters();
+      }
+    };
+    window.addEventListener('varuna-storage', handleStorageEvent);
+    
+    return () => {
+      window.removeEventListener('varuna-storage', handleStorageEvent);
+      if (viewerRef.current) viewerRef.current.dataSources.remove(disastersDataSource);
     };
   }, [viewerReady]);
 

@@ -132,13 +132,24 @@ export default function InstrumentModal() {
     
     // Map instrument variable to gridded dataset variable name
     let gridVar = selectedVar;
-    if (gridVar === 'dissolved_oxygen') gridVar = 'oxygen';
     
     setIsDepthLoading(true);
     setDepthData([]);
     
-    fetch(`http://localhost:8000/api/v1/data/${gridVar}/daily/2026-09-21/column?lat=${lat}&lon=${lon}`)
-      .then(async res => {
+    const loadDepthData = async () => {
+      let timeKey = new Date().toISOString().split('T')[0];
+      try {
+        const keyRes = await fetch(`http://localhost:8000/api/v1/data/${gridVar}/daily/latest_key`);
+        if (keyRes.ok) {
+          const keyData = await keyRes.json();
+          if (keyData.time_key) timeKey = keyData.time_key;
+        }
+      } catch (e) {
+        console.error(`Failed to fetch latest time key for ${gridVar}`, e);
+      }
+
+      try {
+        const res = await fetch(`http://localhost:8000/api/v1/data/${gridVar}/daily/${timeKey}/column?lat=${lat}&lon=${lon}`);
         if (!res.ok) throw new Error("Failed to fetch column");
         const depthLevelsStr = res.headers.get("X-Depth-Levels");
         const depths = depthLevelsStr ? depthLevelsStr.split(',').map(Number) : [];
@@ -156,13 +167,15 @@ export default function InstrumentModal() {
           }
         }
         setDepthData(newDepthData);
-        setIsDepthLoading(false);
-      })
-      .catch(err => {
+      } catch (err) {
         console.error(err);
         setDepthData([]);
+      } finally {
         setIsDepthLoading(false);
-      });
+      }
+    };
+    
+    loadDepthData();
   }, [selectedVar, data]);
 
   const close = () => {

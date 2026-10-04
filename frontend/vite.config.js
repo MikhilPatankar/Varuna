@@ -10,6 +10,11 @@ export default defineConfig({
     viteCompression({ algorithm: 'gzip', ext: '.gz' }),
     viteCompression({ algorithm: 'brotliCompress', ext: '.br' }),
   ],
+  resolve: {
+    alias: {
+      'cesium/Cesium': 'cesium'
+    }
+  },
   server: {
     port: 5173,
     proxy: {

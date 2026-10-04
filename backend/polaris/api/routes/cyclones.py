@@ -109,19 +109,30 @@ async def get_cyclone_details(
         
     last_row = result.iloc[-1]
     
+    import json as json_lib
     positions = []
     for _, row in result.iterrows():
+        radii = row.get('wind_radii_json', '')
+        parsed_radii = None
+        if radii and isinstance(radii, str) and radii.strip():
+            try:
+                parsed_radii = json_lib.loads(radii)
+            except Exception:
+                parsed_radii = None
         positions.append({
             'lat': row['lat'], 'lon': row['lon'],
             'time': row['observation_time'],
             'wind_kts': row['max_wind_kts'],
             'pressure_hpa': row['min_pressure_hpa'],
-            'category': row['storm_category']
+            'category': row['storm_category'],
+            'wind_radii': parsed_radii,
         })
-        
-    current_pos = None
-    if last_row['is_current']:
-        current_pos = positions[-1]
+    
+    # Always expose the last known position, regardless of is_current flag
+    current_pos = {
+        **positions[-1],
+        'is_current': bool(last_row['is_current'])
+    } if positions else None
         
     return {
         'cyclone_id': last_row['cyclone_id'],

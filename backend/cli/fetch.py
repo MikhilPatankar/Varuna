@@ -1,6 +1,7 @@
 import argparse
 import sys
 import asyncio
+import json
 from pathlib import Path
 from datetime import datetime, timedelta
 from polaris.logger import logger
@@ -248,6 +249,17 @@ def fetch_gdacs():
                     
                 alertcolor = item.get('alertcolor', 'Unknown').capitalize()
                 
+                # Extract pre-calculated polygon coordinates (comma-separated lon,lat,lon,lat...)
+                wind_radii = {}
+                if item.get('wind39coordinates'): # 39mph ~= 34kt (Gale force)
+                    wind_radii['34kt_polygon'] = item.get('wind39coordinates')
+                if item.get('wind58coordinates'): # 58mph ~= 50kt (Storm force)
+                    wind_radii['50kt_polygon'] = item.get('wind58coordinates')
+                if item.get('wind74coordinates'): # 74mph ~= 64kt (Hurricane force)
+                    wind_radii['64kt_polygon'] = item.get('wind74coordinates')
+                    
+                wind_radii_json = json.dumps(wind_radii) if wind_radii else None
+                
                 records.append({
                     'storm_id': 'GDACS_' + eid,
                     'name': name.upper(),
@@ -261,6 +273,7 @@ def fetch_gdacs():
                     'storm_category': alertcolor,
                     'storm_speed_kph': float(item.get('track_speed', 0)) if item.get('track_speed') else None,
                     'storm_dir_deg': float(item.get('track_heading', 0)) if item.get('track_heading') else None,
+                    'wind_radii_json': wind_radii_json,
                     'source': 'gdacs',
                     'is_current': is_current
                 })
@@ -281,7 +294,7 @@ def fetch_gdacs():
         con.execute("""
             INSERT INTO cyclones (storm_id, name, basin, season,
                 observation_time, lat, lon, max_wind_kts, min_pressure_hpa,
-                storm_category, storm_speed_kph, storm_dir_deg, source, geom, is_current)
+                storm_category, storm_speed_kph, storm_dir_deg, wind_radii_json, source, geom, is_current)
             SELECT 
                 storm_id, name, basin, season,
                 TRY_CAST(observation_time AS TIMESTAMP), lat, lon, 
@@ -290,6 +303,7 @@ def fetch_gdacs():
                 storm_category, 
                 TRY_CAST(storm_speed_kph AS DOUBLE), 
                 TRY_CAST(storm_dir_deg AS DOUBLE),
+                wind_radii_json,
                 source, ST_Point(lon, lat), is_current
             FROM df
         """)

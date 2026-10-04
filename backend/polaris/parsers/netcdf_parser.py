@@ -1,5 +1,6 @@
 import xarray as xr
 import pandas as pd
+import numpy as np
 from typing import List
 from polaris.parsers.base import BaseParser, ParseResult, DataCategory
 
@@ -93,14 +94,14 @@ class NetCDFParser(BaseParser):
         spatial_bounds = None
         if 'lat' in ds.coords and 'lon' in ds.coords:
             spatial_bounds = {
-                'lat_min': float(ds.lat.min()),
-                'lat_max': float(ds.lat.max()),
-                'lon_min': float(ds.lon.min()),
-                'lon_max': float(ds.lon.max()),
+                'lat_min': float(np.nanmin(ds.lat.values)),
+                'lat_max': float(np.nanmax(ds.lat.values)),
+                'lon_min': float(np.nanmin(ds.lon.values)),
+                'lon_max': float(np.nanmax(ds.lon.values)),
             }
             if 'depth' in ds.coords:
-                spatial_bounds['depth_min'] = float(ds.depth.min())
-                spatial_bounds['depth_max'] = float(ds.depth.max())
+                spatial_bounds['depth_min'] = float(np.nanmin(ds.depth.values))
+                spatial_bounds['depth_max'] = float(np.nanmax(ds.depth.values))
 
         return ParseResult(
             category=DataCategory.GRIDDED_FIELD,
