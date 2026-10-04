@@ -287,7 +287,7 @@ export default function Dashboard() {
     }
     // Expose for MarkModal so it queries the correct variable
     window.varunaActiveOceanVar = activeOceanVar || null;
-  }, [viewerReady, activeOceanVar, opacity, oceanDepth, oceanDensity, currentColorMapInfo, varMin, varMax, varClipMin, varClipMax, varInverted, varStepwise, varSteps, varMasked, varMaskOutline]);
+}, [viewerReady, activeOceanVar, opacity, oceanDepth, oceanDensity, currentColorMapInfo, varMin, varMax, varClipMin, varClipMax, varInverted, varStepwise, varSteps, varMasked, varMaskOutline]);
 
 
 
@@ -436,7 +436,7 @@ export default function Dashboard() {
         <div className="brand">
           <span className="brand-dot" />
           <span className="brand-text">VARUNA</span>
-        </div>
+</div>
         
         <div className="toolbar">
           <button 
@@ -448,8 +448,8 @@ export default function Dashboard() {
                 viewer.render(); // Force a synchronous WebGL frame buffer render
                 const dataUrl = viewer.canvas.toDataURL('image/png');
                 const link = document.createElement('a');
-                link.download = `Varuna_Capture_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.png`;
-                link.href = dataUrl;
+                link.download = `Varuna_Capture_${new Date().toISOString().slice(0, 19).replace(/:/g, \'-\')}.png`;
+link.href = dataUrl;
                 link.click();
               }
             }}
@@ -1085,7 +1085,6 @@ export default function Dashboard() {
                               <div className="gradient-labels" style={{ paddingRight: '28px', marginTop: '4px', marginBottom: '8px' }}>
                                 {(() => {
                                   const unit = (v.max.match(/[^0-9.-]+$/) || [''])[0].trim();
-                                  const [dMin, dMid, dMax] = getDisplayLimits(curMin, curMax, curMasked, unit);
                                   return <><span style={{ position: 'relative', left: curMasked ? '1.5%' : 0 }}>{dMin}</span><span>{dMid}</span><span style={{ position: 'relative', right: curMasked ? '1.5%' : 0 }}>{dMax}</span></>;
                                 })()}
                               </div>
@@ -1579,13 +1578,13 @@ export default function Dashboard() {
         <div className="modal-overlay" onClick={(e) => { if (e.target.classList.contains('modal-overlay')) setActiveModal(null) }}>
           {activeModal === 'info' && (
             <div className="varuna-modal info-modal">
-              <div className="modal-header">
+<div className="modal-header">
                 <h3>Varuna</h3>
-                <button className="close-btn" onClick={() => setActiveModal(null)}><X size={16} /></button>
+<button className="close-btn" onClick={() => setActiveModal(null)}><X size={16} /></button>
               </div>
               <div className="modal-content custom-scrollbar">
                 <p>
-                  Varuna is a 3D digital ocean mdoel built for the web. It takes complex ocean data like temperature, currents, and sea floor depth and makes it easy to explore in real-time. By streaming compressed data directly to your browser, Varuna lets you look beneath the ocean's surface to understand physical changes at any depth.
+                  Varuna is a 3D ocean digital twin built for the web. It takes complex ocean data like temperature, currents, and sea floor depth and makes it easy to explore in real-time. By streaming compressed data directly to your browser, Varuna lets you look beneath the ocean's surface to understand physical changes at any depth.
                 </p>
                 <div className="tech-partners">
                   <h4>Technology Partners</h4>
@@ -1615,9 +1614,9 @@ export default function Dashboard() {
 
           {activeModal === 'changelog' && (
             <div className="varuna-modal changelog-modal">
-              <div className="modal-header">
+<div className="modal-header">
                 <h3>Changelog</h3>
-                <button className="close-btn" onClick={() => setActiveModal(null)}><X size={16} /></button>
+<button className="close-btn" onClick={() => setActiveModal(null)}><X size={16} /></button>
               </div>
               <div className="modal-content custom-scrollbar">
                 <div className="changelog-version">
@@ -1670,14 +1669,14 @@ export default function Dashboard() {
 
           {activeModal === 'database' && (
             <div className="varuna-modal database-modal">
-              <div className="modal-header">
+<div className="modal-header">
                 <h3>Data Sources</h3>
-                <button className="close-btn" onClick={() => setActiveModal(null)}><X size={16} /></button>
+<button className="close-btn" onClick={() => setActiveModal(null)}><X size={16} /></button>
               </div>
               <div className="modal-content custom-scrollbar">
                 <p>
                   Varuna aggregates multi-scale oceanic models, physical profiles, and spatial data from the following verified providers:
-                </p>
+</p>
                 <div className="data-source-list">
                   <div className="data-source-item">
                     <div className="ds-icon"><Database size={16} color="#3b82f6" /></div>

@@ -75,7 +75,6 @@ export default function GlobeView() {
       } catch (e) {
         console.error(`Failed to fetch latest time key for ${variable}`, e);
       }
-
       const savedDepthStr = localStorage.getItem('varuna_oceanDepth');
       const oceanDepth = savedDepthStr ? parseInt(JSON.parse(savedDepthStr)) : 0;
       const savedExaggStr = localStorage.getItem('varuna_vertExagg');
