@@ -30,6 +30,7 @@ function useLocalStorage(key, initialValue) {
       if (typeof window !== "undefined") {
         window.localStorage.setItem(key, JSON.stringify(valueToStore));
         window.dispatchEvent(new CustomEvent('varuna-storage', {
+        window.dispatchEvent(new CustomEvent('varuna-storage', {
           detail: { key, value: valueToStore }
         }));
       }
@@ -63,10 +64,20 @@ export default function Dashboard() {
   // Inner panel is closed by default, but sidebar remains expanded
   const [activeSidebar, setActiveSidebar] = useLocalStorage('varuna_activeSidebar', null)
   const [isSidebarOpen, setIsSidebarOpen] = useLocalStorage('varuna_isSidebarOpen', true)
+  const [activeSidebar, setActiveSidebar] = useLocalStorage('varuna_activeSidebar', null)
+  const [isSidebarOpen, setIsSidebarOpen] = useLocalStorage('varuna_isSidebarOpen', true)
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
   const accountMenuRef = useRef(null)
   
   const [isMapMenuOpen, setIsMapMenuOpen] = useState(false)
+  const [activeMap, setActiveMap] = useLocalStorage('varuna_activeMap', 'Bing Aerial')
+  const [is3D, setIs3D] = useLocalStorage('varuna_is3D', false)
+  const [isStarsOn, setIsStarsOn] = useLocalStorage('varuna_isStarsOn', true)
+  const [isSunlightOn, setIsSunlightOn] = useLocalStorage('varuna_isSunlightOn', false)
+  const [isRotating, setIsRotating] = useLocalStorage('varuna_isRotating', false)
+  const [visualQuality, setVisualQuality] = useLocalStorage('varuna_visualQuality', 6)
+  const [tileCacheLimit, setTileCacheLimit] = useLocalStorage('varuna_tileCacheLimit', 10000)
+  const [atmosphereGlow, setAtmosphereGlow] = useLocalStorage('varuna_atmosphereGlow', 10)
   const [activeMap, setActiveMap] = useLocalStorage('varuna_activeMap', 'Bing Aerial')
   const [is3D, setIs3D] = useLocalStorage('varuna_is3D', false)
   const [isStarsOn, setIsStarsOn] = useLocalStorage('varuna_isStarsOn', true)
@@ -142,8 +153,35 @@ export default function Dashboard() {
   const [showBathySettings, setShowBathySettings] = useLocalStorage('varuna_showBathySettings', true)
   const [vertExagg, setVertExagg] = useLocalStorage('varuna_vertExagg', 80.0)
   const [crossHeight, setCrossHeight] = useLocalStorage('varuna_crossHeight', 200)
+  const [activeLayers, setActiveLayers] = useLocalStorage('varuna_activeLayers', {})
+  const [bathyEnabled, setBathyEnabled] = useLocalStorage('varuna_bathyEnabled', false)
+  const [bathyOpacity, setBathyOpacity] = useLocalStorage('varuna_bathyOpacity', 100)
+  const [bathyColorMapIdx, setBathyColorMapIdx] = useLocalStorage('varuna_bathyColorMapIdx', 4)
+  const [bathyInverted, setBathyInverted] = useLocalStorage('varuna_bathyInverted', false)
+  const [bathyStepwise, setBathyStepwise] = useLocalStorage('varuna_bathyStepwise', false)
+  const [bathySteps, setBathySteps] = useLocalStorage('varuna_bathySteps', 5)
+  const [bathyMasked, setBathyMasked] = useLocalStorage('varuna_bathyMasked', false)
+  const [showBathySettings, setShowBathySettings] = useLocalStorage('varuna_showBathySettings', true)
+  const [vertExagg, setVertExagg] = useLocalStorage('varuna_vertExagg', 80.0)
+  const [crossHeight, setCrossHeight] = useLocalStorage('varuna_crossHeight', 200)
 
   // ── Ocean Variables State ─────────────────────────────
+  const [oceanTab, setOceanTab] = useLocalStorage('varuna_oceanTab', 'Physical')
+  const [activeOceanVar, setActiveOceanVar] = useLocalStorage('varuna_activeOceanVar', null)
+  const [showVarSettings, setShowVarSettings] = useLocalStorage('varuna_ocean_showVarSettings', {})
+  const [opacity, setOpacity] = useLocalStorage('varuna_ocean_opacity', {})
+  const [colorMapIdx, setColorMapIdx] = useLocalStorage('varuna_ocean_colorMapIdx', {})
+  const [varInverted, setVarInverted] = useLocalStorage('varuna_ocean_varInverted', {})
+  const [varStepwise, setVarStepwise] = useLocalStorage('varuna_ocean_varStepwise', {})
+  const [varSteps, setVarSteps] = useLocalStorage('varuna_ocean_varSteps', {})
+  const [varMasked, setVarMasked] = useLocalStorage('varuna_ocean_varMasked', {})
+  const [varMaskOutline, setVarMaskOutline] = useLocalStorage('varuna_ocean_maskOutline', {})
+  const [varClipMin, setVarClipMin] = useLocalStorage('varuna_ocean_clipMin', {})
+  const [varClipMax, setVarClipMax] = useLocalStorage('varuna_ocean_clipMax', {})
+  const [varMin, setVarMin] = useLocalStorage('varuna_ocean_varMin', {})
+  const [varMax, setVarMax] = useLocalStorage('varuna_ocean_varMax', {})
+  const [customColor1_ocean, setCustomColor1_ocean] = useLocalStorage('varuna_ocean_customColor1', {})
+  const [customColor2_ocean, setCustomColor2_ocean] = useLocalStorage('varuna_ocean_customColor2', {})
   const [oceanTab, setOceanTab] = useLocalStorage('varuna_oceanTab', 'Physical')
   const [activeOceanVar, setActiveOceanVar] = useLocalStorage('varuna_activeOceanVar', null)
   const [showVarSettings, setShowVarSettings] = useLocalStorage('varuna_ocean_showVarSettings', {})
@@ -163,11 +201,17 @@ export default function Dashboard() {
   
   const [oceanDepth, setOceanDepth] = useLocalStorage('varuna_oceanDepth', 0)
   const [oceanDensity, setOceanDensity] = useLocalStorage('varuna_oceanDensity', 25)
+  const [oceanDepth, setOceanDepth] = useLocalStorage('varuna_oceanDepth', 0)
+  const [oceanDensity, setOceanDensity] = useLocalStorage('varuna_oceanDensity', 25)
   
   // Shared advanced settings state (Bathymetry)
   const [customColor1, setCustomColor1] = useLocalStorage('varuna_customColor1', '#3b82f6')
   const [customColor2, setCustomColor2] = useLocalStorage('varuna_customColor2', '#10b981')
+  const [customColor1, setCustomColor1] = useLocalStorage('varuna_customColor1', '#3b82f6')
+  const [customColor2, setCustomColor2] = useLocalStorage('varuna_customColor2', '#10b981')
   
+  const [bathyMin, setBathyMin] = useLocalStorage('varuna_bathyMin', '-6000')
+  const [bathyMax, setBathyMax] = useLocalStorage('varuna_bathyMax', '0')
   const [bathyMin, setBathyMin] = useLocalStorage('varuna_bathyMin', '-6000')
   const [bathyMax, setBathyMax] = useLocalStorage('varuna_bathyMax', '0')
 
@@ -399,6 +443,7 @@ export default function Dashboard() {
   const [anomalyYears, setAnomalyYears] = useLocalStorage('varuna_anomalyYears', 5)
 
   // ── Instrument State ──────────────────────────────────
+  const [instruments, setInstruments] = useLocalStorage('varuna_instruments', {
   const [instruments, setInstruments] = useLocalStorage('varuna_instruments', {
     'Argo Floats': false, 'CTD Profilers': false,
     'Satellite Altimeters': false, 'Moored Buoys': false,
@@ -1585,9 +1630,13 @@ link.href = dataUrl;
               <div className="modal-content custom-scrollbar">
                 <p>
                   Varuna is a 3D ocean digital twin built for the web. It takes complex ocean data like temperature, currents, and sea floor depth and makes it easy to explore in real-time. By streaming compressed data directly to your browser, Varuna lets you look beneath the ocean's surface to understand physical changes at any depth.
+                  Varuna is a 3D ocean digital twin built for the web. It takes complex ocean data like temperature, currents, and sea floor depth and makes it easy to explore in real-time. By streaming compressed data directly to your browser, Varuna lets you look beneath the ocean's surface to understand physical changes at any depth.
                 </p>
                 <div className="tech-partners">
                   <h4>Technology Partners</h4>
+                  <div className="partner-logos" style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                    <div className="partner-box" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontWeight: 800, fontSize: '11px', color: '#183A58', letterSpacing: '0.5px' }}>Cesium</span>
                   <div className="partner-logos" style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                     <div className="partner-box" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                       <span style={{ fontWeight: 800, fontSize: '11px', color: '#183A58', letterSpacing: '0.5px' }}>Cesium</span>
@@ -1595,7 +1644,21 @@ link.href = dataUrl;
                     <div className="partner-box" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                       <svg width="14" height="14" viewBox="0 0 110 110" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M54.1 11.2c-21.7 0-20.9 9.4-20.9 9.4l.2 9.8h21.4v3H33s-9.7-1.3-9.7 13.9c0 15.2 8.5 14.6 8.5 14.6h6v-8.5s-.2-9.9 9.9-9.9h22s9.4.2 9.4-9.3v-13s.8-10-15-10z" fill="#387EB8"/><path d="M55.4 98.7c21.7 0 20.9-9.4 20.9-9.4l-.2-9.8H54.7v-3h21.8s9.7 1.3 9.7-13.9c0-15.2-8.5-14.6-8.5-14.6h-6v8.5s.2 9.9-9.9 9.9h-22s-9.4-.2-9.4 9.3v13s-.8 10 15 10z" fill="#FFE052"/></svg>
                       <span style={{ fontSize: '11px', fontWeight: 600, color: '#0f172a' }}>Python</span>
+                    <div className="partner-box" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <svg width="14" height="14" viewBox="0 0 110 110" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M54.1 11.2c-21.7 0-20.9 9.4-20.9 9.4l.2 9.8h21.4v3H33s-9.7-1.3-9.7 13.9c0 15.2 8.5 14.6 8.5 14.6h6v-8.5s-.2-9.9 9.9-9.9h22s9.4.2 9.4-9.3v-13s.8-10-15-10z" fill="#387EB8"/><path d="M55.4 98.7c21.7 0 20.9-9.4 20.9-9.4l-.2-9.8H54.7v-3h21.8s9.7 1.3 9.7-13.9c0-15.2-8.5-14.6-8.5-14.6h-6v8.5s.2 9.9-9.9 9.9h-22s-9.4-.2-9.4 9.3v13s-.8 10 15 10z" fill="#FFE052"/></svg>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#0f172a' }}>Python</span>
                     </div>
+                    <div className="partner-box" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <svg width="14" height="14" viewBox="-10.5 -9.45 21 18.9" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: "#61dafb" }}><circle cx="0" cy="0" r="2" fill="currentColor"></circle><g stroke="currentColor" strokeWidth="1" fill="none"><ellipse rx="10" ry="4.5"></ellipse><ellipse rx="10" ry="4.5" transform="rotate(60)"></ellipse><ellipse rx="10" ry="4.5" transform="rotate(120)"></ellipse></g></svg>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#0f172a' }}>React</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-actions" style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                  <button onClick={() => setActiveModal('database')}>Attributions</button>
+                  <button onClick={() => window.open('https://youtube.com', '_blank')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg> YouTube Video
+                  </button>
                     <div className="partner-box" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                       <svg width="14" height="14" viewBox="-10.5 -9.45 21 18.9" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: "#61dafb" }}><circle cx="0" cy="0" r="2" fill="currentColor"></circle><g stroke="currentColor" strokeWidth="1" fill="none"><ellipse rx="10" ry="4.5"></ellipse><ellipse rx="10" ry="4.5" transform="rotate(60)"></ellipse><ellipse rx="10" ry="4.5" transform="rotate(120)"></ellipse></g></svg>
                       <span style={{ fontSize: '11px', fontWeight: 600, color: '#0f172a' }}>React</span>
@@ -1621,8 +1684,16 @@ link.href = dataUrl;
               <div className="modal-content custom-scrollbar">
                 <div className="changelog-version">
                   <h4>[0.2.0]</h4>
+                  <h4>[0.2.0]</h4>
                   <h5>Added</h5>
                   <ul>
+                    <li>Dynamic Timeline Player for temporal animations</li>
+                    <li>Dropdown for time periods (Month, Year, Decade) with precise seek steps</li>
+                    <li>Sleek, frosted-glass design for the timeline interface</li>
+                  </ul>
+                  <h5>Changed</h5>
+                  <ul>
+                    <li>Rebranded entirely from POLARIS to VARUNA across all UI layers</li>
                     <li>Dynamic Timeline Player for temporal animations</li>
                     <li>Dropdown for time periods (Month, Year, Decade) with precise seek steps</li>
                     <li>Sleek, frosted-glass design for the timeline interface</li>
@@ -1635,12 +1706,22 @@ link.href = dataUrl;
                   <ul>
                     <li>Resolved overflow clipping issues on the Instrument dropdown menus</li>
                     <li>Fixed hover crosshair tooltip tooltip styles to match the modal theme</li>
+                    <li>Resolved overflow clipping issues on the Instrument dropdown menus</li>
+                    <li>Fixed hover crosshair tooltip tooltip styles to match the modal theme</li>
                   </ul>
                 </div>
                 <div className="changelog-version">
                   <h4>[0.1.0]</h4>
+                  <h4>[0.1.0]</h4>
                   <h5>Added</h5>
                   <ul>
+                    <li>Raw Binary Data API returning Float32Array chunks for 3D volumetric rendering</li>
+                    <li>Client-side colormapping and volume rendering via WebGL</li>
+                    <li>Universal Parser Engine for Argo and NetCDF sources</li>
+                  </ul>
+                  <h5>Fixed</h5>
+                  <ul>
+                    <li>Cameras rendering below the bathymetry mesh would not have their states loaded correctly</li>
                     <li>Raw Binary Data API returning Float32Array chunks for 3D volumetric rendering</li>
                     <li>Client-side colormapping and volume rendering via WebGL</li>
                     <li>Universal Parser Engine for Argo and NetCDF sources</li>
@@ -1652,8 +1733,11 @@ link.href = dataUrl;
                 </div>
                 <div className="changelog-version">
                   <h4>[0.0.9]</h4>
+                  <h4>[0.0.9]</h4>
                   <h5>Added</h5>
                   <ul>
+                    <li>High-performance Cesium WebGL rendering engine integration</li>
+                    <li>HUD compass with 60fps real-time math synchronization</li>
                     <li>High-performance Cesium WebGL rendering engine integration</li>
                     <li>HUD compass with 60fps real-time math synchronization</li>
                     <li>Dynamic sidebars with frosted glassmorphism</li>

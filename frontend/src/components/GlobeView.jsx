@@ -78,6 +78,7 @@ export default function GlobeView() {
       const savedDepthStr = localStorage.getItem('varuna_oceanDepth');
       const oceanDepth = savedDepthStr ? parseInt(JSON.parse(savedDepthStr)) : 0;
       const savedExaggStr = localStorage.getItem('varuna_vertExagg');
+      const savedExaggStr = localStorage.getItem('varuna_vertExagg');
       const vertExagg = savedExaggStr ? parseInt(JSON.parse(savedExaggStr)) : 80;
 
       const config = { 
@@ -351,6 +352,7 @@ export default function GlobeView() {
       // After 5 seconds, unleash the GPU and crank all settings to maximum (if user hasn't overridden)!
       setTimeout(() => {
         if (!isActive() || window.varunaHasCustomLOD) return
+        if (!isActive() || window.varunaHasCustomLOD) return
         globe.maximumScreenSpaceError = 0.45
         globe.preloadSiblings = true
         globe.loadingDescendantLimit = 200
@@ -378,6 +380,7 @@ export default function GlobeView() {
       window.setVisualQuality = (val) => {
         if (!viewerRef.current) return;
         window.varunaHasCustomLOD = true;
+        window.varunaHasCustomLOD = true;
         
         // Exponential scale: 1 -> 5.0 (Fast), 10 -> 0.05 (Extreme Quality)
         // 5.0 * 10^(-(val - 1) / 4.5)
@@ -398,6 +401,8 @@ export default function GlobeView() {
 
       window.varunaSunlightEnabled = false;
       window.varunaAtmosphereGlow = 10;
+      window.varunaSunlightEnabled = false;
+      window.varunaAtmosphereGlow = 10;
 
       window.updateAtmosphereAndSunlight = async () => {
         if (!viewerRef.current) return;
@@ -407,6 +412,8 @@ export default function GlobeView() {
         if (!viewerRef.current) return;
         const scene = viewerRef.current.scene;
         const globe = scene.globe;
+        const enableSun = window.varunaSunlightEnabled;
+        const glow = window.varunaAtmosphereGlow;
         const enableSun = window.varunaSunlightEnabled;
         const glow = window.varunaAtmosphereGlow;
 
@@ -440,6 +447,7 @@ export default function GlobeView() {
       };
 
       window.setAtmosphereGlow = (val) => {
+        window.varunaAtmosphereGlow = val;
         window.varunaAtmosphereGlow = val;
         window.updateAtmosphereAndSunlight();
       };
@@ -625,11 +633,15 @@ export default function GlobeView() {
 
           if (window.varunaActiveTool === 'mark') {
             window.dispatchEvent(new CustomEvent('varuna-mark-hover', { 
+          if (window.varunaActiveTool === 'mark') {
+            window.dispatchEvent(new CustomEvent('varuna-mark-hover', { 
               detail: { lat: latDeg, lon: lonDeg, x: movement.endPosition.x, y: movement.endPosition.y } 
             }));
           }
         } else {
           coordsText.textContent = `Deep Space`
+          if (window.varunaActiveTool === 'mark') {
+            window.dispatchEvent(new CustomEvent('varuna-mark-hover', { detail: null }));
           if (window.varunaActiveTool === 'mark') {
             window.dispatchEvent(new CustomEvent('varuna-mark-hover', { detail: null }));
           }
@@ -673,6 +685,7 @@ export default function GlobeView() {
 
       // ── TOOLBAR INTERACTION MODES ────────────────────────────
       window.varunaActiveTool = 'select';
+      window.varunaActiveTool = 'select';
 
       // Store Cesium's default event type arrays so we can restore them
       const defaultRotate   = [CameraEventType.LEFT_DRAG];
@@ -681,7 +694,9 @@ export default function GlobeView() {
       const defaultLook     = null; // disabled by default
 
       window.addEventListener('varuna-tool-changed', (e) => {
+      window.addEventListener('varuna-tool-changed', (e) => {
         const tool = e.detail;
+        window.varunaActiveTool = tool;
         window.varunaActiveTool = tool;
         if (!viewerRef.current) return;
         const scc = viewerRef.current.scene.screenSpaceCameraController;
@@ -872,6 +887,7 @@ export default function GlobeView() {
       // Sunlight & Shadows API
       window.toggleSunlight = (enable) => {
         window.varunaSunlightEnabled = enable;
+        window.varunaSunlightEnabled = enable;
         if (window.updateAtmosphereAndSunlight) {
            window.updateAtmosphereAndSunlight();
         }
@@ -934,6 +950,7 @@ export default function GlobeView() {
     
     const updateVisibility = () => {
       instrumentsDataSource.entities.removeAll();
+      const stored = localStorage.getItem('varuna_instruments');
       const stored = localStorage.getItem('varuna_instruments');
       const toggles = stored ? JSON.parse(stored) : {};
       
@@ -1018,9 +1035,11 @@ export default function GlobeView() {
     
     const handleStorageEvent = (e) => {
       if (e.detail && e.detail.key === 'varuna_instruments') {
+      if (e.detail && e.detail.key === 'varuna_instruments') {
         updateVisibility();
       }
     };
+    window.addEventListener('varuna-storage', handleStorageEvent);
     window.addEventListener('varuna-storage', handleStorageEvent);
     
     // Add Path Data Source
@@ -1032,11 +1051,13 @@ export default function GlobeView() {
     handler.setInputAction((click) => {
       // Check if 'mark' tool is active
       if (window.varunaActiveTool === 'mark') {
+      if (window.varunaActiveTool === 'mark') {
         const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
         if (cartesian) {
           const carto = viewer.scene.globe.ellipsoid.cartesianToCartographic(cartesian);
           const lat = CesiumMath.toDegrees(carto.latitude);
           const lon = CesiumMath.toDegrees(carto.longitude);
+          window.dispatchEvent(new CustomEvent('varuna-mark-click', { detail: { lat, lon, position: click.position, worldPos: cartesian } }));
           window.dispatchEvent(new CustomEvent('varuna-mark-click', { detail: { lat, lon, position: click.position, worldPos: cartesian } }));
         }
         return;
@@ -1049,6 +1070,7 @@ export default function GlobeView() {
         console.log("Clicked instrument:", instId);
         
         // Dispatch event for UI Modal to listen to
+        window.dispatchEvent(new CustomEvent('varuna-instrument-select', { detail: instId }));
         window.dispatchEvent(new CustomEvent('varuna-instrument-select', { detail: instId }));
 
         // Dim other instruments
@@ -1068,6 +1090,7 @@ export default function GlobeView() {
           .then(res => res.json())
           .then(data => {
             // Dispatch event for UI Modal to listen to, passing the rich data
+            window.dispatchEvent(new CustomEvent('varuna-instrument-select', { detail: data }));
             window.dispatchEvent(new CustomEvent('varuna-instrument-select', { detail: data }));
             
             if (!data.profiles || data.profiles.length === 0) return;
@@ -1157,6 +1180,7 @@ export default function GlobeView() {
     }, ScreenSpaceEventType.LEFT_CLICK);
     
     return () => {
+      window.removeEventListener('varuna-storage', handleStorageEvent);
       window.removeEventListener('varuna-storage', handleStorageEvent);
       viewer.dataSources.remove(instrumentsDataSource);
       viewer.dataSources.remove(pathDataSource);
@@ -1678,6 +1702,7 @@ export default function GlobeView() {
         
         <div className="hud-bottom-bar">
           <div className="hud-footer-left">
+            <span className="hud-brand">Varuna</span>
             <span className="hud-brand">Varuna</span>
             <span 
               className="hud-attribution" 
