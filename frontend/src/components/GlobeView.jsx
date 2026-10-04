@@ -31,6 +31,7 @@ import { OceanTileProvider } from '../utils/OceanTileProvider'
 import VolumetricOcean from './VolumetricOcean'
 import CesiumWind from "cesium-wind"
 import './GlobeView.css'
+import { API_BASE_URL } from '../config';
 
 // ─── Main Globe Component ─────────────────────────────────────────────────────
 export default function GlobeView() {
@@ -67,7 +68,7 @@ export default function GlobeView() {
 
       let timeKey = new Date().toISOString().split('T')[0]; // Fallback to today
       try {
-        const res = await fetch(`http://localhost:8000/api/v1/data/${variable}/daily/latest_key`);
+        const res = await fetch(`${API_BASE_URL}/api/v1/data/${variable}/daily/latest_key`);
         if (res.ok) {
           const data = await res.json();
           if (data.time_key) timeKey = data.time_key;
@@ -77,7 +78,6 @@ export default function GlobeView() {
       }
       const savedDepthStr = localStorage.getItem('varuna_oceanDepth');
       const oceanDepth = savedDepthStr ? parseInt(JSON.parse(savedDepthStr)) : 0;
-      const savedExaggStr = localStorage.getItem('varuna_vertExagg');
       const savedExaggStr = localStorage.getItem('varuna_vertExagg');
       const vertExagg = savedExaggStr ? parseInt(JSON.parse(savedExaggStr)) : 80;
 
@@ -141,7 +141,7 @@ export default function GlobeView() {
         }
         
         try {
-          let fetchUrl = `http://localhost:8000/api/v1/data/${checkVar}/daily/latest_key`;
+          let fetchUrl = `${API_BASE_URL}/api/v1/data/${checkVar}/daily/latest_key`;
           const res = await fetch(fetchUrl);
           if (res.ok) {
             const data = await res.json();
@@ -155,9 +155,13 @@ export default function GlobeView() {
           let reqVar = 'currents';
           // we use the currents vector json for both
           try {
-             fetch(`http://localhost:8000/api/v1/data/currents/daily/${timeKey}/vector_json`)
-               .then(res => res.json())
+             fetch(`${API_BASE_URL}/api/v1/data/currents/daily/${timeKey}/vector_json`)
+               .then(res => res.ok ? res.json() : null)
                .then(data => {
+                  if (!data || data.error || !Array.isArray(data)) {
+                    console.error("Vector data unavailable for this date");
+                    return;
+                  }
                   let windOptions = {};
                   if (varName === 'Surface Currents') {
                     windOptions = {
@@ -211,7 +215,7 @@ export default function GlobeView() {
         if (varName === 'Ocean Plastics Anomaly') return; // Handled above as particles
 
         let fetchVar = variable === 'anomaly_temperature' ? `anomaly_temperature_${options.years || 5}` : variable;
-        let urlTemplate = `http://localhost:8000/api/v1/data/${fetchVar}/daily/${timeKey}/tile/{z}/{x}/{y}?depth=0`;
+        let urlTemplate = `${API_BASE_URL}/api/v1/data/${fetchVar}/daily/${timeKey}/tile/{z}/{x}/{y}?depth=0`;
 
         try {
           const provider = new OceanTileProvider({
@@ -352,7 +356,6 @@ export default function GlobeView() {
       // After 5 seconds, unleash the GPU and crank all settings to maximum (if user hasn't overridden)!
       setTimeout(() => {
         if (!isActive() || window.varunaHasCustomLOD) return
-        if (!isActive() || window.varunaHasCustomLOD) return
         globe.maximumScreenSpaceError = 0.45
         globe.preloadSiblings = true
         globe.loadingDescendantLimit = 200
@@ -379,7 +382,6 @@ export default function GlobeView() {
       
       window.setVisualQuality = (val) => {
         if (!viewerRef.current) return;
-        window.varunaHasCustomLOD = true;
         window.varunaHasCustomLOD = true;
         
         // Exponential scale: 1 -> 5.0 (Fast), 10 -> 0.05 (Extreme Quality)
@@ -414,8 +416,6 @@ export default function GlobeView() {
         const globe = scene.globe;
         const enableSun = window.varunaSunlightEnabled;
         const glow = window.varunaAtmosphereGlow;
-        const enableSun = window.varunaSunlightEnabled;
-        const glow = window.varunaAtmosphereGlow;
 
         // 1. Lighting & Shadows
         globe.enableLighting = enableSun;
@@ -447,7 +447,6 @@ export default function GlobeView() {
       };
 
       window.setAtmosphereGlow = (val) => {
-        window.varunaAtmosphereGlow = val;
         window.varunaAtmosphereGlow = val;
         window.updateAtmosphereAndSunlight();
       };
@@ -633,15 +632,11 @@ export default function GlobeView() {
 
           if (window.varunaActiveTool === 'mark') {
             window.dispatchEvent(new CustomEvent('varuna-mark-hover', { 
-          if (window.varunaActiveTool === 'mark') {
-            window.dispatchEvent(new CustomEvent('varuna-mark-hover', { 
               detail: { lat: latDeg, lon: lonDeg, x: movement.endPosition.x, y: movement.endPosition.y } 
             }));
           }
         } else {
           coordsText.textContent = `Deep Space`
-          if (window.varunaActiveTool === 'mark') {
-            window.dispatchEvent(new CustomEvent('varuna-mark-hover', { detail: null }));
           if (window.varunaActiveTool === 'mark') {
             window.dispatchEvent(new CustomEvent('varuna-mark-hover', { detail: null }));
           }
@@ -685,7 +680,6 @@ export default function GlobeView() {
 
       // ── TOOLBAR INTERACTION MODES ────────────────────────────
       window.varunaActiveTool = 'select';
-      window.varunaActiveTool = 'select';
 
       // Store Cesium's default event type arrays so we can restore them
       const defaultRotate   = [CameraEventType.LEFT_DRAG];
@@ -694,9 +688,7 @@ export default function GlobeView() {
       const defaultLook     = null; // disabled by default
 
       window.addEventListener('varuna-tool-changed', (e) => {
-      window.addEventListener('varuna-tool-changed', (e) => {
         const tool = e.detail;
-        window.varunaActiveTool = tool;
         window.varunaActiveTool = tool;
         if (!viewerRef.current) return;
         const scc = viewerRef.current.scene.screenSpaceCameraController;
@@ -884,9 +876,7 @@ export default function GlobeView() {
       }
       
       // Sunlight & Shadows API
-      // Sunlight & Shadows API
       window.toggleSunlight = (enable) => {
-        window.varunaSunlightEnabled = enable;
         window.varunaSunlightEnabled = enable;
         if (window.updateAtmosphereAndSunlight) {
            window.updateAtmosphereAndSunlight();
@@ -939,7 +929,7 @@ export default function GlobeView() {
     
     const fetchInstruments = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/v1/instruments');
+        const res = await fetch(`${API_BASE_URL}/api/v1/instruments`);
         const data = await res.json();
         allInstruments = data.data;
         updateVisibility();
@@ -950,7 +940,6 @@ export default function GlobeView() {
     
     const updateVisibility = () => {
       instrumentsDataSource.entities.removeAll();
-      const stored = localStorage.getItem('varuna_instruments');
       const stored = localStorage.getItem('varuna_instruments');
       const toggles = stored ? JSON.parse(stored) : {};
       
@@ -1035,11 +1024,9 @@ export default function GlobeView() {
     
     const handleStorageEvent = (e) => {
       if (e.detail && e.detail.key === 'varuna_instruments') {
-      if (e.detail && e.detail.key === 'varuna_instruments') {
         updateVisibility();
       }
     };
-    window.addEventListener('varuna-storage', handleStorageEvent);
     window.addEventListener('varuna-storage', handleStorageEvent);
     
     // Add Path Data Source
@@ -1051,13 +1038,11 @@ export default function GlobeView() {
     handler.setInputAction((click) => {
       // Check if 'mark' tool is active
       if (window.varunaActiveTool === 'mark') {
-      if (window.varunaActiveTool === 'mark') {
         const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
         if (cartesian) {
           const carto = viewer.scene.globe.ellipsoid.cartesianToCartographic(cartesian);
           const lat = CesiumMath.toDegrees(carto.latitude);
           const lon = CesiumMath.toDegrees(carto.longitude);
-          window.dispatchEvent(new CustomEvent('varuna-mark-click', { detail: { lat, lon, position: click.position, worldPos: cartesian } }));
           window.dispatchEvent(new CustomEvent('varuna-mark-click', { detail: { lat, lon, position: click.position, worldPos: cartesian } }));
         }
         return;
@@ -1070,7 +1055,6 @@ export default function GlobeView() {
         console.log("Clicked instrument:", instId);
         
         // Dispatch event for UI Modal to listen to
-        window.dispatchEvent(new CustomEvent('varuna-instrument-select', { detail: instId }));
         window.dispatchEvent(new CustomEvent('varuna-instrument-select', { detail: instId }));
 
         // Dim other instruments
@@ -1086,11 +1070,10 @@ export default function GlobeView() {
         // Clear previous path
         pathDataSource.entities.removeAll();
 
-        fetch(`http://localhost:8000/api/v1/instruments/${instId}/profile`)
+        fetch(`${API_BASE_URL}/api/v1/instruments/${instId}/profile`)
           .then(res => res.json())
           .then(data => {
             // Dispatch event for UI Modal to listen to, passing the rich data
-            window.dispatchEvent(new CustomEvent('varuna-instrument-select', { detail: data }));
             window.dispatchEvent(new CustomEvent('varuna-instrument-select', { detail: data }));
             
             if (!data.profiles || data.profiles.length === 0) return;
@@ -1146,7 +1129,7 @@ export default function GlobeView() {
         
         if (type === 'Cyclone Tracking') {
            const sid = dist.cyclone_id?.getValue();
-           fetch(`http://localhost:8000/api/v1/hazards/cyclone/${sid}`)
+           fetch(`${API_BASE_URL}/api/v1/hazards/cyclone/${sid}`)
              .then(res => res.json())
              .then(data => {
                 window.dispatchEvent(new CustomEvent('varuna-disaster-select', { detail: { ...data, hazardType: 'Cyclone Tracking' } }));
@@ -1181,10 +1164,13 @@ export default function GlobeView() {
     
     return () => {
       window.removeEventListener('varuna-storage', handleStorageEvent);
-      window.removeEventListener('varuna-storage', handleStorageEvent);
-      viewer.dataSources.remove(instrumentsDataSource);
-      viewer.dataSources.remove(pathDataSource);
-      handler.destroy();
+      if (viewer && !viewer.isDestroyed()) {
+        viewer.dataSources.remove(instrumentsDataSource);
+        viewer.dataSources.remove(pathDataSource);
+      }
+      if (!handler.isDestroyed()) {
+        handler.destroy();
+      }
     };
   }, [viewerReady]);
 
@@ -1208,12 +1194,8 @@ export default function GlobeView() {
       const toggles = stored ? JSON.parse(stored) : {};
       
       const typeMap = {
-        'Cyclone Tracking': { api: 'cyclones', isHazard: false, color: '#ef4444' },
-        'Oil Spillage': { api: 'oil_spill', isHazard: true, color: '#333333' },
-        'Tsunami Warning': { api: 'tsunami', isHazard: true, color: '#3b82f6' },
-        'Fishing Zone': { api: 'fishing_spot', isHazard: true, color: '#10b981' },
-        'Dead Zone': { api: 'dead_zone', isHazard: true, color: '#6b7280' },
-        'Marine Heatwave': { api: 'marine_heatwave', isHazard: true, color: '#f59e0b' }
+        'Cyclones': { api: 'cyclones', isHazard: false, color: '#ef4444' },
+        'Oil Spillage': { api: 'oil_spill', isHazard: true, color: '#333333' }
       };
       
       for (const [key, isActive] of Object.entries(toggles)) {
@@ -1225,7 +1207,7 @@ export default function GlobeView() {
         if (!data) {
           try {
             if (conf.isHazard) {
-              const res = await fetch(`http://localhost:8000/api/v1/hazards/${conf.api}`);
+              const res = await fetch(`${API_BASE_URL}/api/v1/hazards/${conf.api}`);
               const json = await res.json();
               let fetchedData = json.data || [];
               
@@ -1234,14 +1216,17 @@ export default function GlobeView() {
               sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
               
               data = fetchedData.filter(item => {
+                if (conf.api === 'oil_spill') return true; // Show all historical spills
                 if (!item.start_time) return true;
                 const start = new Date(item.start_time);
-                const end = item.end_time ? new Date(item.end_time) : start;
+                let endStr = item.end_time;
+                if (endStr === 'NaT') endStr = item.start_time;
+                const end = endStr ? new Date(endStr) : start;
                 return start >= sevenDaysAgo || end >= sevenDaysAgo;
               });
               
             } else if (conf.api === 'cyclones') {
-              const res = await fetch(`http://localhost:8000/api/v1/hazards/cyclones?active_only=true`);
+              const res = await fetch(`${API_BASE_URL}/api/v1/hazards/cyclones?active_only=true`);
               const json = await res.json();
               data = json.data || [];
             }
@@ -1273,7 +1258,7 @@ export default function GlobeView() {
             let trackData = loadedTracks[sid];
             if (!trackData) {
               try {
-                const r = await fetch(`http://localhost:8000/api/v1/hazards/cyclone/${sid}`);
+                const r = await fetch(`${API_BASE_URL}/api/v1/hazards/cyclone/${sid}`);
                 trackData = await r.json();
                 loadedTracks[sid] = trackData;
               } catch (err) {
@@ -1448,7 +1433,7 @@ export default function GlobeView() {
                 },
                 properties: {
                   isDisaster: true,
-                  disasterType: 'Cyclone Tracking',
+                  disasterType: 'Cyclones',
                   cyclone_id: sid,
                   name: trackData.name,
                   basin: trackData.basin,
@@ -1463,7 +1448,7 @@ export default function GlobeView() {
 
         // ── Generic Hazard Icons (non-cyclone) ──────────────────────────────
         const createDisasterIcon = (type, colorHex) => {
-          if (type === 'Cyclone Tracking') return cycloneIcon;
+          if (type === 'Cyclones') return cycloneIcon;
           
           let innerSvg = '';
           if (type === 'Oil Spillage') {
@@ -1550,7 +1535,9 @@ export default function GlobeView() {
     
     return () => {
       window.removeEventListener('varuna-storage', handleStorageEvent);
-      if (viewerRef.current) viewerRef.current.dataSources.remove(disastersDataSource);
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        viewerRef.current.dataSources.remove(disastersDataSource);
+      }
     };
   }, [viewerReady]);
 
@@ -1702,7 +1689,6 @@ export default function GlobeView() {
         
         <div className="hud-bottom-bar">
           <div className="hud-footer-left">
-            <span className="hud-brand">Varuna</span>
             <span className="hud-brand">Varuna</span>
             <span 
               className="hud-attribution" 

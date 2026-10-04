@@ -153,7 +153,7 @@ async def get_currents_vector_json(
     ds_u = get_cached_dataset("u_current", "daily", time_key)
     ds_v = get_cached_dataset("v_current", "daily", time_key)
     if ds_u is None or ds_v is None:
-        return Response(status_code=404, content="Data not found")
+        return Response(status_code=404, content=json.dumps({"error": "Data not found"}), media_type="application/json")
         
     ds_u = ds_u.isel(time=-1).sel(depth=0, method='nearest')
     ds_v = ds_v.isel(time=-1).sel(depth=0, method='nearest')

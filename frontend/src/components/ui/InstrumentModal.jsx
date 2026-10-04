@@ -3,6 +3,7 @@ import { Cartesian3, SceneTransforms, EllipsoidalOccluder, Ellipsoid } from 'ces
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ScatterChart, Scatter } from 'recharts';
 import { X, Activity, Thermometer, Droplet, Wind } from 'lucide-react';
 import './InstrumentModal.css';
+import { API_BASE_URL } from '../../config';
 
 const VAR_MAP = {
   temperature: { label: 'Temperature', unit: '°C', color: '#ff9800', icon: Thermometer },
@@ -139,7 +140,7 @@ export default function InstrumentModal() {
     const loadDepthData = async () => {
       let timeKey = new Date().toISOString().split('T')[0];
       try {
-        const keyRes = await fetch(`http://localhost:8000/api/v1/data/${gridVar}/daily/latest_key`);
+        const keyRes = await fetch(`${API_BASE_URL}/api/v1/data/${gridVar}/daily/latest_key`);
         if (keyRes.ok) {
           const keyData = await keyRes.json();
           if (keyData.time_key) timeKey = keyData.time_key;
@@ -149,7 +150,7 @@ export default function InstrumentModal() {
       }
 
       try {
-        const res = await fetch(`http://localhost:8000/api/v1/data/${gridVar}/daily/${timeKey}/column?lat=${lat}&lon=${lon}`);
+        const res = await fetch(`${API_BASE_URL}/api/v1/data/${gridVar}/daily/${timeKey}/column?lat=${lat}&lon=${lon}`);
         if (!res.ok) throw new Error("Failed to fetch column");
         const depthLevelsStr = res.headers.get("X-Depth-Levels");
         const depths = depthLevelsStr ? depthLevelsStr.split(',').map(Number) : [];

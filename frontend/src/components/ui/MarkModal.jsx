@@ -3,6 +3,7 @@ import { Cartesian3, SceneTransforms, EllipsoidalOccluder, Ellipsoid } from 'ces
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { X, Activity, Thermometer, Droplet, Wind } from 'lucide-react';
 import './InstrumentModal.css'; // identical stylesheet — no custom CSS needed
+import { API_BASE_URL } from '../../config';
 
 // Same VAR_MAP as InstrumentModal
 const VAR_MAP = {
@@ -24,7 +25,7 @@ const _latestKeyCache = {};
 async function getLatestKey(variable) {
   if (_latestKeyCache[variable]) return _latestKeyCache[variable];
   try {
-    const res = await fetch(`http://localhost:8000/api/v1/data/${variable}/daily/latest_key`);
+    const res = await fetch(`${API_BASE_URL}/api/v1/data/${variable}/daily/latest_key`);
     if (!res.ok) return null;
     const json = await res.json();
     _latestKeyCache[variable] = json.time_key;
@@ -36,7 +37,7 @@ async function getLatestKey(variable) {
 
 async function fetchDepthColumn(variable, timeKey, lat, lon) {
   const res = await fetch(
-    `http://localhost:8000/api/v1/data/${variable}/daily/${timeKey}/column?lat=${lat}&lon=${lon}`
+    `${API_BASE_URL}/api/v1/data/${variable}/daily/${timeKey}/column?lat=${lat}&lon=${lon}`
   );
   if (!res.ok) throw new Error('No data');
   const depthLevelsStr = res.headers.get('X-Depth-Levels');

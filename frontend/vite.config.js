@@ -16,6 +16,9 @@ export default defineConfig({
     }
   },
   server: {
+    allowedHosts: [
+      'varunas.duckdns.org'
+    ],
     port: 5173,
     proxy: {
       '/api': {

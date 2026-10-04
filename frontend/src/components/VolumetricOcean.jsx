@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config';
 import React, { useEffect, useRef } from 'react';
 import * as Cesium from 'cesium';
 
@@ -75,7 +76,7 @@ export default function VolumetricOcean({ viewer, variable, timeKey, opacity = 1
       primitiveRef.current = null;
     }
 
-    const baseUrl = `/api/v1/data/${variable}/daily/${timeKey}/tile/{z}/{x}/{y}`;
+    const baseUrl = `${API_BASE_URL}/api/v1/data/${variable}/daily/${timeKey}/tile/{z}/{x}/{y}`;
     const initialUrl = baseUrl.replace('{z}', 0).replace('{x}', 0).replace('{y}', 0);
     console.log('[VOL] Initializing provider from:', initialUrl);
 
