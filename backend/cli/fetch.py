@@ -21,11 +21,69 @@ sys.path.insert(0, str(backend_dir))
 
 from polaris.pipeline.ingestion import IngestionPipeline
 
-def fetch_cmems(time_period="today", variables_group="all"):
-    logger.info(f"Fetching CMEMS data (Period: {time_period}, Variables: {variables_group})")
+def _fetch_single_cmems_task(target_date: str, var_name: str, config: dict, pipeline: IngestionPipeline):
+    dataset_id = config["dataset_id"]
+    is_3d = config["is_3d"]
+    out_file = f"cmems_{var_name}_{target_date}.nc"
+    logger.info(f"--- Fetching {var_name} (Global for {target_date}) from {dataset_id} ---")
+    
+    try:
+        # 2D datasets don't use depth
+        depth_args = {}
+        if is_3d:
+            depth_args = {
+                "minimum_depth": 0,
+                "maximum_depth": 5000
+            }
+            
+        copernicusmarine.subset(
+            dataset_id=dataset_id,
+            variables=[var_name],
+            minimum_longitude=-180,
+            maximum_longitude=179.99,
+            minimum_latitude=-90,
+            maximum_latitude=90,
+            start_datetime=f"{target_date} 00:00:00",
+            end_datetime=f"{target_date} 23:59:59",
+            output_filename=out_file,
+            output_directory=str(RAW_DATA_DIR),
+            force_download=True,
+            **depth_args
+        )
+        
+        filepath = RAW_DATA_DIR / out_file
+        logger.info(f"Download complete: {filepath}")
+        
+        # Ingest it into Zarr & DuckDB (thread-safe catalog lock)
+        result = pipeline.ingest(str(filepath), tier="daily", time_key=target_date)
+        logger.info(f"Ingestion complete for {var_name} ({target_date}). Result: {result}")
+        
+        # Clean up raw file to save disk space
+        try:
+            os.remove(filepath)
+            logger.info(f"Deleted raw temporary file: {out_file}")
+        except Exception as cleanup_err:
+            logger.warning(f"Could not delete {out_file}: {cleanup_err}")
+            
+        return True
+    except Exception as e:
+        logger.error(f"Error downloading/ingesting {var_name} for {target_date}: {e}")
+        try:
+            filepath = RAW_DATA_DIR / out_file
+            if filepath.exists():
+                os.remove(filepath)
+        except Exception:
+            pass
+        return False
+
+def fetch_cmems(time_period="today", variables_group="all", max_workers=4):
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from datetime import timezone
+
+    logger.info(f"Fetching CMEMS data (Period: {time_period}, Variables: {variables_group}, Workers: {max_workers})")
     
     # Setup dates
-    end_date = datetime.utcnow()
+    end_date = datetime.now(timezone.utc)
     if time_period == "today":
         dates_to_fetch = [end_date]
     elif time_period == "week":
@@ -35,7 +93,7 @@ def fetch_cmems(time_period="today", variables_group="all"):
     elif time_period == "year":
         dates_to_fetch = [end_date - timedelta(days=i) for i in range(365)]
     else:
-        # Default to today if unrecognized, or we could parse YYYY-MM-DD
+        # Default to today if unrecognized
         dates_to_fetch = [end_date]
         
     dates_to_fetch.reverse() # Chronological order
@@ -49,73 +107,62 @@ def fetch_cmems(time_period="today", variables_group="all"):
         "no3": {"dataset_id": "cmems_mod_glo_bgc-nut_anfc_0.25deg_P1D-m", "is_3d": True},
         "po4": {"dataset_id": "cmems_mod_glo_bgc-nut_anfc_0.25deg_P1D-m", "is_3d": True},
         "si": {"dataset_id": "cmems_mod_glo_bgc-nut_anfc_0.25deg_P1D-m", "is_3d": True},
+        "uo": {"dataset_id": "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m", "is_3d": True},
+        "vo": {"dataset_id": "cmems_mod_glo_phy-cur_anfc_0.083deg_P1D-m", "is_3d": True}
     }
     
     if variables_group == "all":
         vars_to_fetch = list(VARIABLES_CONFIG.keys())
     elif variables_group == "physics":
-        vars_to_fetch = ["thetao", "so", "zos"]
+        vars_to_fetch = ["thetao", "so", "zos", "uo", "vo"]
     elif variables_group == "bgc":
         vars_to_fetch = ["chl", "o2", "no3", "po4", "si"]
     else:
         vars_to_fetch = [v.strip() for v in variables_group.split(",")]
         
+    pipeline = IngestionPipeline()
+    tasks = []
     for target_date_obj in dates_to_fetch:
         target_date = target_date_obj.strftime("%Y-%m-%d")
-        
         for var_name in vars_to_fetch:
             if var_name not in VARIABLES_CONFIG:
                 logger.warning(f"Variable {var_name} not recognized. Skipping.")
                 continue
-                
-            config = VARIABLES_CONFIG[var_name]
-            dataset_id = config["dataset_id"]
-            is_3d = config["is_3d"]
+            tasks.append((target_date, var_name, VARIABLES_CONFIG[var_name]))
             
-            out_file = f"cmems_{var_name}_{target_date}.nc"
-            logger.info(f"--- Fetching {var_name} (Global for {target_date}) from {dataset_id} ---")
-            
+    total_tasks = len(tasks)
+    if total_tasks == 0:
+        logger.warning("No tasks matching variable criteria.")
+        return
+
+    # If single task or max_workers == 1, execute sequentially
+    if total_tasks == 1 or max_workers <= 1:
+        logger.info(f"Executing {total_tasks} CMEMS task sequentially...")
+        for target_date, var_name, config in tasks:
+            _fetch_single_cmems_task(target_date, var_name, config, pipeline)
+        return
+
+    # Parallel execution
+    num_workers = min(max_workers, total_tasks)
+    logger.info(f"Executing {total_tasks} CMEMS tasks in parallel using {num_workers} concurrent workers...")
+
+    completed = 0
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        future_to_task = {
+            executor.submit(_fetch_single_cmems_task, target_date, var_name, config, pipeline): (target_date, var_name)
+            for target_date, var_name, config in tasks
+        }
+        for future in as_completed(future_to_task):
+            target_date, var_name = future_to_task[future]
+            completed += 1
             try:
-                # 2D datasets don't use depth
-                depth_args = {}
-                if is_3d:
-                    depth_args = {
-                        "minimum_depth": 0,
-                        "maximum_depth": 5000
-                    }
-                    
-                copernicusmarine.subset(
-                    dataset_id=dataset_id,
-                    variables=[var_name],
-                    minimum_longitude=-180,
-                    maximum_longitude=179.99,
-                    minimum_latitude=-90,
-                    maximum_latitude=90,
-                    start_datetime=f"{target_date} 00:00:00",
-                    end_datetime=f"{target_date} 23:59:59",
-                    output_filename=out_file,
-                    output_directory=str(RAW_DATA_DIR),
-                    force_download=True,
-                    **depth_args
-                )
-                
-                filepath = RAW_DATA_DIR / out_file
-                logger.info(f"Download complete: {filepath}")
-                
-                # Automatically ingest it
-                pipeline = IngestionPipeline()
-                result = pipeline.ingest(str(filepath), tier="daily", time_key=target_date)
-                logger.info(f"Ingestion complete for {var_name}. Result: {result}")
-                
-                # Clean up raw file
-                try:
-                    os.remove(filepath)
-                    logger.info(f"Deleted raw temporary file: {out_file} to save space.")
-                except Exception as cleanup_err:
-                    logger.warning(f"Could not delete {out_file}: {cleanup_err}")
-                
-            except Exception as e:
-                logger.error(f"Error downloading {var_name} for {target_date}: {e}")
+                success = future.result()
+                status = "SUCCESS" if success else "FAILED"
+                logger.info(f"[{completed}/{total_tasks}] {status}: {var_name} for {target_date}")
+            except Exception as exc:
+                logger.error(f"[{completed}/{total_tasks}] CRASHED: {var_name} for {target_date}: {exc}")
+
+    logger.info(f"All {total_tasks} CMEMS tasks finished.")
 
 def fetch_ibtracs():
     
@@ -784,20 +831,27 @@ def fetch_insitu():
 def main():
     parser = argparse.ArgumentParser(description="Fetch ocean data for POLARIS.")
     parser.add_argument("--source", choices=["cmems", "ibtracs", "gdacs", "spills", "insitu", "bathymetry"], help="Legacy: Data source to fetch from.")
-    parser.add_argument("--cmems", nargs='*', help="Fetch CMEMS data. Args: [time_period] [variables]. E.g. --cmems today all, --cmems year physics")
+    parser.add_argument("--cmems", nargs='*', help="Fetch CMEMS data. Args: [time_period] [variables] [workers]. E.g. --cmems today all, --cmems year physics 4")
+    parser.add_argument("--workers", type=int, default=4, help="Number of concurrent workers for fetching CMEMS data (default: 4)")
     
     args = parser.parse_args()
     
     if args.cmems is not None:
         time_period = "today"
         variables = "all"
+        workers = args.workers
         if len(args.cmems) >= 1:
             time_period = args.cmems[0]
         if len(args.cmems) >= 2:
             variables = args.cmems[1]
-        fetch_cmems(time_period=time_period, variables_group=variables)
+        if len(args.cmems) >= 3:
+            try:
+                workers = int(args.cmems[2])
+            except ValueError:
+                pass
+        fetch_cmems(time_period=time_period, variables_group=variables, max_workers=workers)
     elif args.source == "cmems":
-        fetch_cmems()
+        fetch_cmems(max_workers=args.workers)
     elif args.source == "ibtracs":
         fetch_ibtracs()
         fetch_gdacs()

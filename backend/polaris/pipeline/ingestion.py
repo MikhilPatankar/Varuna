@@ -1,5 +1,6 @@
 import duckdb
 import json
+import threading
 from pathlib import Path
 from datetime import datetime
 from polaris.config import DUCKDB_PATH, ZARR_ROOT, CHUNK_CONFIG
@@ -15,6 +16,8 @@ from polaris.parsers.base import DataCategory, ParseResult
 from polaris.storage.zarr_store import ZarrStore
 
 class IngestionPipeline:
+    _db_lock = threading.Lock()
+
     def __init__(self):
         self.registry = ParserRegistry()
         # Specific parsers first
@@ -175,26 +178,26 @@ class IngestionPipeline:
 
     def _register_catalog(self, var: str, tier: str, time_key: str, store_path: str, result: ParseResult):
         dataset_id = f"{var}_{tier}_{time_key}"
-        con = self._get_db()
-        
         time_start = result.time_range[0] if result.time_range else None
         time_end = result.time_range[1] if result.time_range else None
         
-        con.execute("""
-            INSERT OR REPLACE INTO dataset_catalog
-            (dataset_id, dataset_name, category, variables, temporal_type,
-             time_key, time_start, time_end, lat_min, lat_max, lon_min, lon_max,
-             depth_min, depth_max, storage_path, chunk_shape)
-            VALUES (?, ?, 'gridded', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, [
-            dataset_id, var, json.dumps([var]), tier, time_key,
-            time_start, time_end,
-            result.spatial_bounds.get('lat_min') if result.spatial_bounds else None,
-            result.spatial_bounds.get('lat_max') if result.spatial_bounds else None,
-            result.spatial_bounds.get('lon_min') if result.spatial_bounds else None,
-            result.spatial_bounds.get('lon_max') if result.spatial_bounds else None,
-            result.spatial_bounds.get('depth_min') if result.spatial_bounds else None,
-            result.spatial_bounds.get('depth_max') if result.spatial_bounds else None,
-            store_path, json.dumps(CHUNK_CONFIG),
-        ])
-        con.close()
+        with IngestionPipeline._db_lock:
+            con = self._get_db()
+            con.execute("""
+                INSERT OR REPLACE INTO dataset_catalog
+                (dataset_id, dataset_name, category, variables, temporal_type,
+                 time_key, time_start, time_end, lat_min, lat_max, lon_min, lon_max,
+                 depth_min, depth_max, storage_path, chunk_shape)
+                VALUES (?, ?, 'gridded', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                dataset_id, var, json.dumps([var]), tier, time_key,
+                time_start, time_end,
+                result.spatial_bounds.get('lat_min') if result.spatial_bounds else None,
+                result.spatial_bounds.get('lat_max') if result.spatial_bounds else None,
+                result.spatial_bounds.get('lon_min') if result.spatial_bounds else None,
+                result.spatial_bounds.get('lon_max') if result.spatial_bounds else None,
+                result.spatial_bounds.get('depth_min') if result.spatial_bounds else None,
+                result.spatial_bounds.get('depth_max') if result.spatial_bounds else None,
+                store_path, json.dumps(CHUNK_CONFIG),
+            ])
+            con.close()
