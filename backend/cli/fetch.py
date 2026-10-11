@@ -5,6 +5,12 @@ import json
 from pathlib import Path
 from datetime import datetime, timedelta
 from polaris.logger import logger
+import requests
+import pandas as pd
+import duckdb
+import xml.etree.ElementTree as ET
+import re
+import copernicusmarine
 
 import os
 import urllib.request
@@ -16,10 +22,6 @@ sys.path.insert(0, str(backend_dir))
 from polaris.pipeline.ingestion import IngestionPipeline
 
 def fetch_cmems(time_period="today", variables_group="all"):
-    import copernicusmarine
-    import os
-    from datetime import datetime, timedelta
-    
     logger.info(f"Fetching CMEMS data (Period: {time_period}, Variables: {variables_group})")
     
     # Setup dates
@@ -146,13 +148,6 @@ def fetch_ibtracs():
 
 
 def fetch_gdacs():
-    import requests
-    import pandas as pd
-    import duckdb
-    import datetime
-    import xml.etree.ElementTree as ET
-    import re
-    from polaris.config import DUCKDB_PATH
     
     logger.info("Fetching all tropical cyclones from GDACS API (2025-Present)...")
     
@@ -317,12 +312,12 @@ def fetch_skytruth():
     import pandas as pd
     import duckdb
     import json
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from polaris.config import DUCKDB_PATH
     
     logger.info("Fetching latest oil spills from SkyTruth Cerulean API...")
     
-    end = datetime.utcnow()
+    end = datetime.now(timezone.utc)
     start = end - timedelta(days=7)
     dt_str = f"{start.strftime('%Y-%m-%dT%H:%M:%SZ')}/{end.strftime('%Y-%m-%dT%H:%M:%SZ')}"
     
@@ -555,17 +550,27 @@ def fetch_insitu():
     # Instrument types covered: Argo float (BGC + Core), Ice Tethered Profilers
     logger.info("1/6  Fetching Argo Floats (Coriolis GDAC ERDDAP)...")
     try:
-        from argopy import IndexFetcher
-        idx = IndexFetcher(src='erddap').region([-180, 180, -90, 90, start_date, now.strftime('%Y-%m-%d')]).to_dataframe()
-        if not idx.empty:
-            df = idx.rename(columns={
-                'wmo': 'instrument_id', 'date': 'observation_time',
-                'latitude': 'lat', 'longitude': 'lon',
-            })
+        # Direct Coriolis ERDDAP query (resilient, avoids argopy/pandas 2.x C-API deprecation conflicts)
+        ARGO_URL = (
+            "https://erddap.ifremer.fr/erddap/tabledap/ArgoFloats-index.csv"
+            f"?file,date,latitude,longitude"
+            f"&date>={start_date}&distinct()"
+        )
+        r = requests.get(ARGO_URL, timeout=60)
+        if r.status_code == 200:
+            df = pd.read_csv(StringIO(r.text), skiprows=[1])
+            df['instrument_id'] = df['file'].str.split('/').str[1]
             df['instrument_type'] = 'Argo float'
+            df = df.rename(columns={
+                'date': 'observation_time',
+                'latitude': 'lat',
+                'longitude': 'lon'
+            })
             df = df[['instrument_id', 'instrument_type', 'lat', 'lon', 'observation_time']].dropna(subset=['lat', 'lon'])
             _ingest_df(df, pipeline, "Argo Floats", RAW_DATA_DIR / "argo_tmp.csv")
             logger.info(f"  => {len(df)} Argo float observations")
+        else:
+            logger.warning(f"  Coriolis ERDDAP returned status {r.status_code}")
     except Exception as e:
         logger.error(f"Argo fetch failed: {e}")
 

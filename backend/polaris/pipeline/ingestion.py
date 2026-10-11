@@ -91,6 +91,7 @@ class IngestionPipeline:
                 df['depth'] = 0.0
 
             # Insert profiles
+            con.execute("CREATE SEQUENCE IF NOT EXISTS seq_profile_id START 1;")
             con.execute("""
                 INSERT INTO profiles (profile_id, instrument_id, observation_time,
                     lat, lon, depth, temperature, salinity,
@@ -135,6 +136,7 @@ class IngestionPipeline:
     def _ingest_zones(self, result: ParseResult):
         df = result.tabular
         con = self._get_db()
+        con.execute("CREATE SEQUENCE IF NOT EXISTS seq_zone_id START 1;")
         con.execute("""
             INSERT INTO ocean_zones (zone_id, zone_type, name, geom)
             SELECT 
@@ -150,6 +152,7 @@ class IngestionPipeline:
     def _ingest_hazards(self, result: ParseResult):
         df = result.tabular
         con = self._get_db()
+        con.execute("CREATE SEQUENCE IF NOT EXISTS seq_hazard_id START 1;")
         con.execute("""
             INSERT INTO hazard_events (event_id, hazard_type, name, severity,
                 start_time, end_time, lat, lon, geom, properties_json, source)

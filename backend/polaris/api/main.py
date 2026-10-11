@@ -50,7 +50,7 @@ from fastapi.staticfiles import StaticFiles
 from polaris.config import DATA_DIR
 
 static_dir = DATA_DIR / "static"
-static_dir.mkdir(exist_ok=True)
+static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 @app.get("/health")

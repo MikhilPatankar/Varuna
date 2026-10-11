@@ -1127,12 +1127,12 @@ export default function GlobeView() {
         const dist = pickedObject.id.properties;
         const type = dist.disasterType?.getValue();
         
-        if (type === 'Cyclone Tracking') {
+        if (type === 'Cyclones') {
            const sid = dist.cyclone_id?.getValue();
            fetch(`${API_BASE_URL}/api/v1/hazards/cyclone/${sid}`)
              .then(res => res.json())
              .then(data => {
-                window.dispatchEvent(new CustomEvent('varuna-disaster-select', { detail: { ...data, hazardType: 'Cyclone Tracking' } }));
+                window.dispatchEvent(new CustomEvent('varuna-disaster-select', { detail: { ...data, hazardType: 'Cyclones' } }));
              })
              .catch(err => console.error("Failed to fetch cyclone details", err));
         } else {
@@ -1251,7 +1251,7 @@ export default function GlobeView() {
         };
 
         // ── Cyclone: draw full track instead of single icon ─────────────────
-        if (key === 'Cyclone Tracking') {
+        if (key === 'Cyclones') {
           for (const item of data) {
             const sid = item.cyclone_id;
             if (!sid) continue;

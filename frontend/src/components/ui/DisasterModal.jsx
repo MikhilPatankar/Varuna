@@ -17,7 +17,7 @@ export default function DisasterModal() {
       setData(payload);
       
       let lat, lon;
-      if (payload.hazardType === 'Cyclone Tracking' && payload.current_position) {
+      if (payload.hazardType === 'Cyclones' && payload.current_position) {
         lat = payload.current_position.lat;
         lon = payload.current_position.lon;
       } else {
@@ -100,7 +100,7 @@ export default function DisasterModal() {
 
   if (!data) return null;
 
-  const isCyclone = data.hazardType === 'Cyclone Tracking';
+  const isCyclone = data.hazardType === 'Cyclones';
 
   return (
     <>

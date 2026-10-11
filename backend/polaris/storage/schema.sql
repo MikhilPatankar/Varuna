@@ -3,6 +3,7 @@
 -- ============================================================
 CREATE SEQUENCE IF NOT EXISTS seq_profile_id START 1;
 CREATE SEQUENCE IF NOT EXISTS seq_zone_id START 1;
+CREATE SEQUENCE IF NOT EXISTS seq_hazard_id START 1;
 
 -- ============================================================
 -- INSTRUMENT REGISTRY (Argo floats, Gliders, CTDs, moorings)
